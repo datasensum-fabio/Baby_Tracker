@@ -48,7 +48,7 @@ export default function Home() {
           .filter((c) => c.babies)
           .map((c) => {
             const b = c.babies as unknown as { id: string; name: string; birth_date: string | null; code: string };
-            return { carer_id: c.id, baby_id: b.id, baby_name: b.name, birth_date: b.birth_date, role: c.role, code: b.code, active: c.active };
+            return { carer_id: c.id, baby_id: b.id, baby_name: b.name, birth_date: b.birth_date, role: c.role, code: b.code, active: c.active !== false };
           })
       );
     }
