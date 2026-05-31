@@ -49,7 +49,7 @@ export function activityTextColor(type: ActivityType): string {
 }
 
 export function summariseActivity(activity: Activity): string {
-  const d = activity.details as Record<string, unknown>;
+  const d = activity.details as unknown as Record<string, unknown>;
   switch (activity.type) {
     case "feed": {
       const labels: Record<string, string> = {
