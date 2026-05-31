@@ -6,6 +6,7 @@ import { Activity, ActivityType, Baby, Carer } from "@/lib/types";
 import { activityEmoji, activityLabel, timeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
+import InstallBanner from "./InstallBanner";
 import { Share2, RefreshCw, Pencil } from "lucide-react";
 import { differenceInDays, differenceInWeeks, differenceInMonths, format, isToday, isYesterday } from "date-fns";
 
@@ -236,6 +237,7 @@ export default function Dashboard() {
         />
       )}
       {showShare && baby && <ShareModal code={baby.code} onClose={() => setShowShare(false)} />}
+      <InstallBanner />
     </div>
   );
 }
