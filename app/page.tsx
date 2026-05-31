@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { signOut } from "@/lib/auth";
 import { differenceInDays, differenceInWeeks, differenceInMonths } from "date-fns";
-import { Plus, LogOut, Link, ChevronDown, ChevronUp, X, RotateCcw } from "lucide-react";
+import { Plus, LogOut, Link, ChevronDown, ChevronUp, X, RotateCcw, Share2, Copy, Check, MessageCircle } from "lucide-react";
 import { InstallCard } from "@/components/InstallBanner";
 
 interface BabyEntry {
@@ -35,7 +35,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
   const [showDelinked, setShowDelinked] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null); // carer_id
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [showShare, setShowShare] = useState(false);
+  const [shareMode, setShareMode] = useState<"choose" | "app" | "baby">("choose");
+  const [selectedBaby, setSelectedBaby] = useState<BabyEntry | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function loadBabies(userId: string) {
     const { data } = await supabase
@@ -101,9 +105,15 @@ export default function Home() {
           <h1 className="text-2xl font-bold">Baby Tracker 👶</h1>
           <p className="text-white/70 text-sm mt-0.5">{userEmail}</p>
         </div>
-        <button onClick={signOut} className="p-2 bg-white/20 rounded-full active:bg-white/30">
-          <LogOut size={18} />
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => { setShareMode("choose"); setSelectedBaby(null); setCopied(false); setShowShare(true); }}
+            className="p-2 bg-white/20 rounded-full active:bg-white/30">
+            <Share2 size={18} />
+          </button>
+          <button onClick={signOut} className="p-2 bg-white/20 rounded-full active:bg-white/30">
+            <LogOut size={18} />
+          </button>
+        </div>
       </div>
 
       <div className="px-4 py-6 space-y-4">
@@ -219,6 +229,112 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Share modal */}
+      {showShare && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
+          onClick={() => setShowShare(false)}>
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm space-y-4"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Share</h2>
+              <button onClick={() => setShowShare(false)} className="p-2 rounded-full bg-gray-100"><X size={20} /></button>
+            </div>
+
+            {shareMode === "choose" && (
+              <div className="space-y-3">
+                {/* Share app */}
+                <button onClick={() => setShareMode("app")}
+                  className="w-full bg-white border-2 border-gray-100 rounded-2xl p-4 flex items-center gap-4 text-left hover:border-sleep active:bg-gray-50">
+                  <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0">📲</div>
+                  <div>
+                    <p className="font-semibold text-gray-800">Share the app</p>
+                    <p className="text-sm text-gray-400">Let someone install Baby Tracker</p>
+                  </div>
+                </button>
+
+                {/* Share with baby */}
+                {active.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (active.length === 1) { setSelectedBaby(active[0]); setShareMode("baby"); }
+                      else setShareMode("baby");
+                    }}
+                    className="w-full bg-white border-2 border-gray-100 rounded-2xl p-4 flex items-center gap-4 text-left hover:border-sleep active:bg-gray-50">
+                    <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0">👶</div>
+                    <div>
+                      <p className="font-semibold text-gray-800">Invite a carer</p>
+                      <p className="text-sm text-gray-400">Share access to a baby&apos;s tracker</p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {shareMode === "app" && (() => {
+              const appUrl = "https://baby-tracker-flame-ten.vercel.app";
+              const waText = `Hey! I use Baby Tracker to log feeds, sleep and more for my baby. It's free and works right in the browser — no app store needed!\n\n${appUrl}`;
+              return (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500">Share the app link with anyone — they can sign up and use it for free.</p>
+                  <a href={`https://wa.me/?text=${encodeURIComponent(waText)}`} target="_blank" rel="noopener noreferrer"
+                    className="w-full bg-[#25D366] text-white rounded-2xl p-4 font-semibold flex items-center justify-center gap-3 active:opacity-80 text-lg">
+                    <MessageCircle size={22} /> Share via WhatsApp
+                  </a>
+                  <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center gap-2">
+                    <p className="flex-1 text-xs text-gray-500 font-mono truncate">{appUrl}</p>
+                    <button onClick={async () => { await navigator.clipboard.writeText(appUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                      className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm font-medium text-gray-600 active:bg-gray-50 flex-shrink-0">
+                      {copied ? <><Check size={14} className="text-green-500" /> Copied</> : <><Copy size={14} /> Copy</>}
+                    </button>
+                  </div>
+                  <button onClick={() => setShareMode("choose")} className="w-full text-gray-400 text-sm py-1">← Back</button>
+                </div>
+              );
+            })()}
+
+            {shareMode === "baby" && (() => {
+              const baby = selectedBaby;
+              if (!baby && active.length > 1) {
+                return (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-500">Which baby would you like to share?</p>
+                    {active.map((b) => (
+                      <button key={b.baby_id} onClick={() => setSelectedBaby(b)}
+                        className="w-full bg-white border-2 border-gray-100 rounded-2xl p-4 flex items-center gap-3 text-left hover:border-sleep active:bg-gray-50">
+                        <span className="text-2xl">👶</span>
+                        <span className="font-semibold text-gray-800">{b.baby_name}</span>
+                      </button>
+                    ))}
+                    <button onClick={() => setShareMode("choose")} className="w-full text-gray-400 text-sm py-1">← Back</button>
+                  </div>
+                );
+              }
+              if (!baby) return null;
+              const inviteLink = `https://baby-tracker-flame-ten.vercel.app/join/${baby.code}`;
+              const waText = `Hi! I'd like to share access to ${baby.baby_name}'s Baby Tracker with you.\n\nTap the link to create your account and you'll be automatically connected:\n${inviteLink}`;
+              return (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500">Invite someone to track <strong>{baby.baby_name}</strong> with you.</p>
+                  <a href={`https://wa.me/?text=${encodeURIComponent(waText)}`} target="_blank" rel="noopener noreferrer"
+                    className="w-full bg-[#25D366] text-white rounded-2xl p-4 font-semibold flex items-center justify-center gap-3 active:opacity-80 text-lg">
+                    <MessageCircle size={22} /> Share via WhatsApp
+                  </a>
+                  <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center gap-2">
+                    <p className="flex-1 text-xs text-gray-500 font-mono truncate">{inviteLink}</p>
+                    <button onClick={async () => { await navigator.clipboard.writeText(inviteLink); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                      className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm font-medium text-gray-600 active:bg-gray-50 flex-shrink-0">
+                      {copied ? <><Check size={14} className="text-green-500" /> Copied</> : <><Copy size={14} /> Copy</>}
+                    </button>
+                  </div>
+                  <p className="text-center text-xs text-gray-400">Baby code: <span className="font-mono font-bold text-sleep">{baby.code}</span></p>
+                  <button onClick={() => { setSelectedBaby(null); setShareMode(active.length > 1 ? "baby" : "choose"); }} className="w-full text-gray-400 text-sm py-1">← Back</button>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

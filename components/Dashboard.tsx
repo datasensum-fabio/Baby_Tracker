@@ -267,7 +267,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Log an activity</p>
           <div className="grid grid-cols-2 gap-3">
             {(["feed", "sleep", "medication", "nappy"] as ActivityType[]).map((t) => (
-              <button key={t} onClick={() => router.push(`/baby/${babyId}/${t}`)}
+              <button key={t} onClick={() => setLogType(t)}
                 className={{
                   feed: "bg-feed hover:bg-feed-dark active:bg-feed-dark",
                   sleep: "bg-sleep hover:bg-sleep-dark active:bg-sleep-dark",
