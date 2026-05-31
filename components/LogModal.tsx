@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { Activity, ActivityType } from "@/lib/types";
 import { activityEmoji, activityLabel } from "@/lib/helpers";
 import { X, Trash2 } from "lucide-react";
-import { format } from "date-fns";
+import { format, subMinutes, subHours } from "date-fns";
 
 interface Props {
   type: ActivityType;
@@ -17,16 +17,36 @@ interface Props {
 }
 
 const colorButton: Record<ActivityType, string> = {
-  feed: "bg-feed",
-  sleep: "bg-sleep",
-  medication: "bg-medication",
-  nappy: "bg-nappy",
+  feed: "bg-feed", sleep: "bg-sleep", medication: "bg-medication", nappy: "bg-nappy",
+};
+const colorRing: Record<ActivityType, string> = {
+  feed: "focus:ring-feed", sleep: "focus:ring-sleep", medication: "focus:ring-medication", nappy: "focus:ring-nappy",
 };
 
 function initField<T>(existing: Activity | undefined, key: string, fallback: T): T {
   if (!existing) return fallback;
   const val = (existing.details as unknown as Record<string, unknown>)[key];
   return val !== undefined ? (val as T) : fallback;
+}
+
+function errMsg(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
+  return "Failed to save.";
+}
+
+const TIME_PRESETS = [
+  { label: "Now",    minutes: 0 },
+  { label: "1m ago", minutes: 1 },
+  { label: "5m ago", minutes: 5 },
+  { label: "10m",    minutes: 10 },
+  { label: "15m",    minutes: 15 },
+  { label: "30m",    minutes: 30 },
+  { label: "1h ago", minutes: 60 },
+];
+
+function offsetToDateStr(minutesAgo: number): string {
+  const d = minutesAgo === 0 ? new Date() : subMinutes(new Date(), minutesAgo);
+  return format(d, "yyyy-MM-dd'T'HH:mm");
 }
 
 export default function LogModal({ type, babyId, carerId, existing, onClose, onSaved }: Props) {
@@ -37,41 +57,46 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
   const [notes, setNotes] = useState(existing?.notes ?? "");
-  const [loggedAt, setLoggedAt] = useState(
+
+  // Time picker — preset chip or custom datetime
+  const [timePreset, setTimePreset] = useState<number | "custom">(isEdit ? "custom" : 0);
+  const [customTime, setCustomTime] = useState(
     existing
       ? format(new Date(existing.logged_at), "yyyy-MM-dd'T'HH:mm")
       : format(new Date(), "yyyy-MM-dd'T'HH:mm")
   );
+
+  function getLoggedAt(): string {
+    if (timePreset === "custom") return new Date(customTime).toISOString();
+    return subMinutes(new Date(), timePreset as number).toISOString();
+  }
 
   // Feed fields
   const [feedType, setFeedType] = useState<string>(initField(existing, "feed_type", "formula"));
   const [amountMl, setAmountMl] = useState<string>(String(initField(existing, "amount_ml", "") ?? ""));
   const [durationMin, setDurationMin] = useState<string>(String(initField(existing, "duration_min", "") ?? ""));
 
-  // Sleep fields
+  // Sleep
   const [sleepDuration, setSleepDuration] = useState<string>(String(initField(existing, "duration_min", "") ?? ""));
 
-  // Medication fields
-  const [medName, setMedName] = useState<string>(initField(existing, "name", ""));
-  const [medDose, setMedDose] = useState<string>(String(initField(existing, "dose", "") ?? ""));
+  // Medication — default to Propranolol 0.6ml
+  const [medName, setMedName] = useState<string>(initField(existing, "name", "Propranolol"));
+  const [medDose, setMedDose] = useState<string>(String(initField(existing, "dose", "0.6") ?? "0.6"));
   const [medUnit, setMedUnit] = useState<string>(initField(existing, "unit", "ml"));
 
-  // Nappy fields
+  // Nappy
   const [nappyType, setNappyType] = useState<string>(initField(existing, "nappy_type", "wet"));
   const [nappyColor, setNappyColor] = useState<string>(initField(existing, "color", ""));
 
   function buildDetails(): Record<string, unknown> | null {
     if (type === "feed") {
       const d: Record<string, unknown> = { feed_type: feedType };
-      if (feedType === "formula" || feedType === "bottle") {
-        if (amountMl) d.amount_ml = parseFloat(amountMl);
-      } else {
-        if (durationMin) d.duration_min = parseFloat(durationMin);
-      }
+      if (feedType === "formula" || feedType === "bottle") { if (amountMl) d.amount_ml = parseFloat(amountMl); }
+      else { if (durationMin) d.duration_min = parseFloat(durationMin); }
       return d;
     }
     if (type === "sleep") {
-      const d: Record<string, unknown> = { start_time: loggedAt };
+      const d: Record<string, unknown> = { start_time: getLoggedAt() };
       if (sleepDuration) d.duration_min = parseFloat(sleepDuration);
       return d;
     }
@@ -94,25 +119,20 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
     setError("");
     try {
       if (isEdit && existing) {
-        const { error: err } = await supabase
-          .from("activities")
-          .update({ details, notes: notes.trim() || null, logged_at: new Date(loggedAt).toISOString() })
+        const { error: err } = await supabase.from("activities")
+          .update({ details, notes: notes.trim() || null, logged_at: getLoggedAt() })
           .eq("id", existing.id);
         if (err) throw err;
       } else {
         const { error: err } = await supabase.from("activities").insert({
           baby_id: babyId, carer_id: carerId, type, details,
-          notes: notes.trim() || null,
-          logged_at: new Date(loggedAt).toISOString(),
+          notes: notes.trim() || null, logged_at: getLoggedAt(),
         });
         if (err) throw err;
       }
       onSaved();
-    } catch (e: unknown) {
-      setError(e && typeof e === "object" && "message" in e ? String((e as {message:unknown}).message) : "Failed to save.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError(errMsg(e)); }
+    finally { setLoading(false); }
   }
 
   async function handleDelete() {
@@ -122,72 +142,81 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
       const { error: err } = await supabase.from("activities").delete().eq("id", existing.id);
       if (err) throw err;
       onSaved();
-    } catch (e: unknown) {
-      setError(e && typeof e === "object" && "message" in e ? String((e as {message:unknown}).message) : "Failed to delete.");
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
+    } catch (e) { setError(errMsg(e)); setDeleting(false); setConfirmDelete(false); }
   }
+
+  const ring = colorRing[type];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold">
-            {activityEmoji(type)} {isEdit ? "Edit" : "Log"} {activityLabel(type)}
-          </h2>
+          <h2 className="text-xl font-bold">{activityEmoji(type)} {isEdit ? "Edit" : "Log"} {activityLabel(type)}</h2>
           <div className="flex items-center gap-2">
             {isEdit && (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="p-2 rounded-full bg-red-50 text-red-400 active:bg-red-100"
-              >
+              <button onClick={() => setConfirmDelete(true)} className="p-2 rounded-full bg-red-50 text-red-400 active:bg-red-100">
                 <Trash2 size={18} />
               </button>
             )}
-            <button onClick={onClose} className="p-2 rounded-full bg-gray-100 active:bg-gray-200">
-              <X size={20} />
-            </button>
+            <button onClick={onClose} className="p-2 rounded-full bg-gray-100 active:bg-gray-200"><X size={20} /></button>
           </div>
         </div>
 
-        {/* Delete confirmation */}
+        {/* Delete confirm */}
         {confirmDelete && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
             <p className="text-red-700 font-medium text-sm">Delete this activity?</p>
             <div className="flex gap-2">
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 bg-red-500 text-white rounded-xl py-2 font-semibold text-sm disabled:opacity-50"
-              >
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 bg-red-500 text-white rounded-xl py-2 font-semibold text-sm disabled:opacity-50">
                 {deleting ? "Deleting..." : "Yes, delete"}
               </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-xl py-2 font-semibold text-sm"
-              >
+              <button onClick={() => setConfirmDelete(false)}
+                className="flex-1 bg-white border border-gray-200 text-gray-700 rounded-xl py-2 font-semibold text-sm">
                 Cancel
               </button>
             </div>
           </div>
         )}
 
-        {/* Time */}
+        {/* ── TIME PICKER ── */}
         <div>
-          <label className="block text-sm font-medium text-gray-600 mb-1">When</label>
-          <input
-            type="datetime-local"
-            value={loggedAt}
-            onChange={(e) => setLoggedAt(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-sleep"
-          />
+          <label className="block text-sm font-medium text-gray-600 mb-2">When</label>
+          <div className="flex flex-wrap gap-2">
+            {TIME_PRESETS.map((p) => (
+              <button
+                key={p.minutes}
+                onClick={() => setTimePreset(p.minutes)}
+                className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                  timePreset === p.minutes
+                    ? `${colorButton[type]} text-white border-transparent`
+                    : "bg-white text-gray-600 border-gray-200"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setTimePreset("custom")}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-colors ${
+                timePreset === "custom"
+                  ? `${colorButton[type]} text-white border-transparent`
+                  : "bg-white text-gray-600 border-gray-200"
+              }`}
+            >
+              Custom
+            </button>
+          </div>
+          {timePreset === "custom" && (
+            <input type="datetime-local" value={customTime} onChange={(e) => setCustomTime(e.target.value)}
+              className={`mt-2 w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 ${ring}`} />
+          )}
         </div>
 
-        {/* Feed */}
+        {/* ── FEED ── */}
         {type === "feed" && (
           <>
             <div>
@@ -200,13 +229,10 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
                   { value: "formula", label: "Formula" },
                   { value: "bottle", label: "Bottle" },
                 ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFeedType(opt.value)}
+                  <button key={opt.value} onClick={() => setFeedType(opt.value)}
                     className={`rounded-xl p-3 text-sm font-medium border-2 transition-colors ${
                       feedType === opt.value ? "bg-feed text-white border-feed" : "bg-white text-gray-700 border-gray-200"
-                    }`}
-                  >
+                    }`}>
                     {opt.label}
                   </button>
                 ))}
@@ -216,46 +242,46 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">Amount (ml)</label>
                 <input type="number" value={amountMl} onChange={(e) => setAmountMl(e.target.value)} placeholder="e.g. 120"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-feed" />
+                  className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
               </div>
             ) : (
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">Duration (minutes)</label>
                 <input type="number" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} placeholder="e.g. 15"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-feed" />
+                  className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
               </div>
             )}
           </>
         )}
 
-        {/* Sleep */}
+        {/* ── SLEEP ── */}
         {type === "sleep" && (
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-1">Duration (minutes, optional)</label>
             <input type="number" value={sleepDuration} onChange={(e) => setSleepDuration(e.target.value)}
               placeholder="Leave blank if still sleeping"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep" />
+              className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
           </div>
         )}
 
-        {/* Medication */}
+        {/* ── MEDICATION ── */}
         {type === "medication" && (
           <>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Medication name *</label>
-              <input type="text" value={medName} onChange={(e) => setMedName(e.target.value)} placeholder="e.g. Calpol"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-medication" />
+              <input type="text" value={medName} onChange={(e) => setMedName(e.target.value)} placeholder="e.g. Propranolol"
+                className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-600 mb-1">Dose *</label>
-                <input type="number" value={medDose} onChange={(e) => setMedDose(e.target.value)} placeholder="e.g. 2.5" step="0.5"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-medication" />
+                <input type="number" value={medDose} onChange={(e) => setMedDose(e.target.value)} placeholder="e.g. 0.6" step="0.1"
+                  className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
               </div>
               <div className="w-28">
                 <label className="block text-sm font-medium text-gray-600 mb-1">Unit</label>
                 <select value={medUnit} onChange={(e) => setMedUnit(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-medication bg-white">
+                  className={`w-full border border-gray-200 rounded-xl px-3 py-3 text-lg focus:outline-none focus:ring-2 ${ring} bg-white`}>
                   {["ml", "mg", "drops", "tablet"].map((u) => <option key={u}>{u}</option>)}
                 </select>
               </div>
@@ -263,7 +289,7 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
           </>
         )}
 
-        {/* Nappy */}
+        {/* ── NAPPY ── */}
         {type === "nappy" && (
           <>
             <div>
@@ -287,7 +313,7 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Colour (optional)</label>
               <input type="text" value={nappyColor} onChange={(e) => setNappyColor(e.target.value)} placeholder="e.g. yellow, green"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-nappy" />
+                className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
             </div>
           </>
         )}

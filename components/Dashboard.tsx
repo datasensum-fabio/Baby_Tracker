@@ -9,7 +9,10 @@ import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
 import { Share2, RefreshCw, Pencil, ArrowLeft } from "lucide-react";
-import { differenceInDays, differenceInWeeks, differenceInMonths, format, isToday, isYesterday } from "date-fns";
+import {
+  differenceInMinutes, differenceInDays, differenceInWeeks, differenceInMonths,
+  format, isToday, isYesterday,
+} from "date-fns";
 
 const ACTIVITY_TYPES: ActivityType[] = ["feed", "sleep", "medication", "nappy"];
 
@@ -18,13 +21,6 @@ const buttonStyle: Record<ActivityType, string> = {
   sleep: "bg-sleep hover:bg-sleep-dark active:bg-sleep-dark",
   medication: "bg-medication hover:bg-medication-dark active:bg-medication-dark",
   nappy: "bg-nappy hover:bg-nappy-dark active:bg-nappy-dark",
-};
-
-const cardBorder: Record<ActivityType, string> = {
-  feed: "border-l-feed",
-  sleep: "border-l-sleep",
-  medication: "border-l-medication",
-  nappy: "border-l-nappy",
 };
 
 function dateLabel(dateStr: string): string {
@@ -47,10 +43,39 @@ function groupByDate(activities: Activity[]): { label: string; items: Activity[]
   }));
 }
 
-interface Props {
-  babyId: string;
-  carerId: string;
+function det(a: Activity): Record<string, unknown> {
+  return a.details as unknown as Record<string, unknown>;
 }
+
+function dailyTotal(activities: Activity[], type: ActivityType): string {
+  const today = activities.filter((a) => a.type === type && isToday(new Date(a.logged_at)));
+  if (type === "feed") {
+    const ml = today.reduce((s, a) => s + (Number(det(a).amount_ml) || 0), 0);
+    return ml > 0 ? `${ml} ml today` : `${today.length} feed${today.length !== 1 ? "s" : ""} today`;
+  }
+  if (type === "sleep") {
+    const mins = today.reduce((s, a) => s + (Number(det(a).duration_min) || 0), 0);
+    if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m today`;
+    return mins > 0 ? `${mins} min today` : "";
+  }
+  if (type === "medication") {
+    return today.length > 0 ? `${today.length} dose${today.length !== 1 ? "s" : ""} today` : "";
+  }
+  if (type === "nappy") {
+    return today.length > 0 ? `${today.length} change${today.length !== 1 ? "s" : ""} today` : "";
+  }
+  return "";
+}
+
+function isAlert(last: Activity | undefined, type: ActivityType): boolean {
+  if (!last) return false;
+  const mins = differenceInMinutes(new Date(), new Date(last.logged_at));
+  if (type === "feed") return mins > 180;       // > 3 hours
+  if (type === "medication") return mins > 720; // > 12 hours
+  return false;
+}
+
+interface Props { babyId: string; carerId: string; }
 
 export default function Dashboard({ babyId, carerId }: Props) {
   const router = useRouter();
@@ -66,30 +91,22 @@ export default function Dashboard({ babyId, carerId }: Props) {
     const [{ data: babyData }, { data: carerData }, { data: actData }] = await Promise.all([
       supabase.from("babies").select().eq("id", babyId).single(),
       supabase.from("carers").select().eq("id", carerId).single(),
-      supabase
-        .from("activities")
-        .select("*, carers(name)")
-        .eq("baby_id", babyId)
-        .order("logged_at", { ascending: false })
-        .limit(200),
+      supabase.from("activities").select("*, carers(name)")
+        .eq("baby_id", babyId).order("logged_at", { ascending: false }).limit(200),
     ]);
     if (babyData) setBaby(babyData);
     if (carerData) setCarer(carerData);
     if (actData) {
-      setActivities(
-        actData.map((a: Activity & { carers?: { name: string } }) => ({
-          ...a,
-          carer_name: a.carers?.name ?? "Unknown",
-        }))
-      );
+      setActivities(actData.map((a: Activity & { carers?: { name: string } }) => ({
+        ...a, carer_name: a.carers?.name ?? "Unknown",
+      })));
     }
     setLoading(false);
   }, [babyId, carerId]);
 
   useEffect(() => {
     fetchData();
-    const channel = supabase
-      .channel(`activities-${babyId}`)
+    const channel = supabase.channel(`activities-${babyId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "activities", filter: `baby_id=eq.${babyId}` }, fetchData)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -111,14 +128,16 @@ export default function Dashboard({ babyId, carerId }: Props) {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-4xl animate-bounce">👶</div>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center"><div className="text-4xl animate-bounce">👶</div></div>;
   }
 
   const grouped = groupByDate(activities);
+  const lastFeed = lastOf("feed");
+  const lastSleep = lastOf("sleep");
+  const lastMed = lastOf("medication");
+  const lastNappy = lastOf("nappy");
+  const feedAlert = isAlert(lastFeed, "feed");
+  const medAlert = isAlert(lastMed, "medication");
 
   return (
     <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
@@ -136,36 +155,113 @@ export default function Dashboard({ babyId, carerId }: Props) {
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={fetchData} className="p-2 bg-white/20 rounded-full active:bg-white/30">
-              <RefreshCw size={18} />
-            </button>
-            <button onClick={() => setShowShare(true)} className="p-2 bg-white/20 rounded-full active:bg-white/30">
-              <Share2 size={18} />
-            </button>
+            <button onClick={fetchData} className="p-2 bg-white/20 rounded-full active:bg-white/30"><RefreshCw size={18} /></button>
+            <button onClick={() => setShowShare(true)} className="p-2 bg-white/20 rounded-full active:bg-white/30"><Share2 size={18} /></button>
           </div>
         </div>
       </div>
 
       <div className="px-4 py-5 space-y-5">
-        {/* Last activity summary */}
-        <div className="grid grid-cols-2 gap-3">
-          {ACTIVITY_TYPES.map((type) => {
-            const last = lastOf(type);
-            return (
-              <div key={type} className={`bg-white rounded-2xl p-3 border-l-4 shadow-sm ${cardBorder[type]}`}>
-                <p className="text-lg font-bold">{activityEmoji(type)} {activityLabel(type)}</p>
-                {last ? (
-                  <>
-                    <p className="text-xs text-gray-500 mt-0.5">{timeAgo(last.logged_at)}</p>
-                    <p className="text-sm text-gray-700 mt-0.5 truncate">{summariseActivity(last)}</p>
-                    <p className="text-xs text-gray-400">by {last.carer_name}</p>
-                  </>
-                ) : (
-                  <p className="text-xs text-gray-400 mt-1">No record yet</p>
-                )}
+        {/* Summary cards */}
+        <div className="space-y-3">
+
+          {/* FEED — full-width, big */}
+          <div
+            className={`rounded-2xl p-4 border-l-4 border-l-feed shadow-sm transition-colors ${feedAlert ? "bg-red-50" : "bg-white"}`}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-xl font-bold flex items-center gap-2">🍼 Feed</p>
+              {feedAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over 3 hours!</span>}
+            </div>
+            {lastFeed ? (
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Last feed</p>
+                  <p className={`text-2xl font-bold mt-0.5 ${feedAlert ? "text-red-600" : "text-gray-800"}`}>
+                    {timeAgo(lastFeed.logged_at)}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-0.5">{summariseActivity(lastFeed)}</p>
+                  {det(lastFeed).amount_ml != null && (
+                    <p className="text-sm font-semibold text-feed-dark mt-0.5">{String(det(lastFeed).amount_ml)} ml</p>
+                  )}
+                  <p className="text-xs text-gray-400">by {lastFeed.carer_name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Today</p>
+                  <p className="text-2xl font-bold text-gray-700 mt-0.5">
+                    {activities.filter(a => a.type === "feed" && isToday(new Date(a.logged_at)))
+                      .reduce((s, a) => s + (Number(det(a).amount_ml) || 0), 0)} ml
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {activities.filter(a => a.type === "feed" && isToday(new Date(a.logged_at))).length} feeds
+                  </p>
+                </div>
               </div>
-            );
-          })}
+            ) : (
+              <p className="text-sm text-gray-400 mt-1">No feed logged yet</p>
+            )}
+          </div>
+
+          {/* SLEEP + NAPPY — 2 col */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Sleep */}
+            <div className="bg-white rounded-2xl p-3 border-l-4 border-l-sleep shadow-sm">
+              <p className="font-bold flex items-center gap-1">😴 Sleep</p>
+              {lastSleep ? (
+                <>
+                  <p className="text-xs text-gray-500 mt-1">{timeAgo(lastSleep.logged_at)}</p>
+                  <p className="text-sm text-gray-700 truncate">{summariseActivity(lastSleep)}</p>
+                  <p className="text-xs text-gray-400">by {lastSleep.carer_name}</p>
+                  {dailyTotal(activities, "sleep") && (
+                    <p className="text-xs font-semibold text-sleep-dark mt-1">{dailyTotal(activities, "sleep")}</p>
+                  )}
+                </>
+              ) : <p className="text-xs text-gray-400 mt-1">No record yet</p>}
+            </div>
+            {/* Nappy */}
+            <div className="bg-white rounded-2xl p-3 border-l-4 border-l-nappy shadow-sm">
+              <p className="font-bold flex items-center gap-1">🩲 Nappy</p>
+              {lastNappy ? (
+                <>
+                  <p className="text-xs text-gray-500 mt-1">{timeAgo(lastNappy.logged_at)}</p>
+                  <p className="text-sm text-gray-700 truncate">{summariseActivity(lastNappy)}</p>
+                  <p className="text-xs text-gray-400">by {lastNappy.carer_name}</p>
+                  {dailyTotal(activities, "nappy") && (
+                    <p className="text-xs font-semibold text-nappy-dark mt-1">{dailyTotal(activities, "nappy")}</p>
+                  )}
+                </>
+              ) : <p className="text-xs text-gray-400 mt-1">No record yet</p>}
+            </div>
+          </div>
+
+          {/* MEDICATION — full width */}
+          <div className={`rounded-2xl p-4 border-l-4 border-l-medication shadow-sm transition-colors ${medAlert ? "bg-red-50" : "bg-white"}`}>
+            <div className="flex items-center justify-between">
+              <p className="text-xl font-bold">💊 Medication</p>
+              {medAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over 12 hours!</span>}
+            </div>
+            {lastMed ? (
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Last dose</p>
+                  <p className={`text-2xl font-bold mt-0.5 ${medAlert ? "text-red-600" : "text-gray-800"}`}>
+                    {timeAgo(lastMed.logged_at)}
+                  </p>
+                  <p className="text-sm text-gray-500">{summariseActivity(lastMed)}</p>
+                  <p className="text-xs text-gray-400">by {lastMed.carer_name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-400 uppercase tracking-wide">Today</p>
+                  <p className="text-2xl font-bold text-gray-700 mt-0.5">
+                    {activities.filter(a => a.type === "medication" && isToday(new Date(a.logged_at))).length}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">doses</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 mt-1">No medication logged yet</p>
+            )}
+          </div>
         </div>
 
         {/* Log buttons */}
@@ -173,11 +269,8 @@ export default function Dashboard({ babyId, carerId }: Props) {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Log an activity</p>
           <div className="grid grid-cols-2 gap-3">
             {ACTIVITY_TYPES.map((type) => (
-              <button
-                key={type}
-                onClick={() => setLogType(type)}
-                className={`${buttonStyle[type]} text-white rounded-2xl p-4 flex items-center gap-3 shadow active:scale-95 transition-transform`}
-              >
+              <button key={type} onClick={() => setLogType(type)}
+                className={`${buttonStyle[type]} text-white rounded-2xl p-4 flex items-center gap-3 shadow active:scale-95 transition-transform`}>
                 <span className="text-2xl">{activityEmoji(type)}</span>
                 <span className="text-lg font-semibold">{activityLabel(type)}</span>
               </button>
@@ -190,8 +283,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Activity log</p>
           {grouped.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center text-gray-400 shadow-sm">
-              <p className="text-3xl mb-2">📋</p>
-              <p>No activities logged yet</p>
+              <p className="text-3xl mb-2">📋</p><p>No activities logged yet</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -207,15 +299,11 @@ export default function Dashboard({ babyId, carerId }: Props) {
                             <span className="font-semibold text-gray-800">{activityLabel(a.type)}</span>
                             <span className="text-sm text-gray-500 truncate">{summariseActivity(a)}</span>
                           </div>
-                          <p className="text-xs text-gray-400">
-                            {formatDateTime(a.logged_at)} · {a.carer_name}
-                          </p>
+                          <p className="text-xs text-gray-400">{formatDateTime(a.logged_at)} · {a.carer_name}</p>
                           {a.notes && <p className="text-xs text-gray-500 italic mt-0.5">{a.notes}</p>}
                         </div>
-                        <button
-                          onClick={() => setEditActivity(a)}
-                          className="p-2 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 active:bg-gray-200 flex-shrink-0"
-                        >
+                        <button onClick={() => setEditActivity(a)}
+                          className="p-2 rounded-full text-gray-300 hover:text-gray-500 hover:bg-gray-100 active:bg-gray-200 flex-shrink-0">
                           <Pencil size={15} />
                         </button>
                       </div>
@@ -229,23 +317,12 @@ export default function Dashboard({ babyId, carerId }: Props) {
       </div>
 
       {logType && (
-        <LogModal
-          type={logType}
-          babyId={babyId}
-          carerId={carerId}
-          onClose={() => setLogType(null)}
-          onSaved={() => { setLogType(null); fetchData(); }}
-        />
+        <LogModal type={logType} babyId={babyId} carerId={carerId}
+          onClose={() => setLogType(null)} onSaved={() => { setLogType(null); fetchData(); }} />
       )}
       {editActivity && (
-        <LogModal
-          type={editActivity.type}
-          babyId={babyId}
-          carerId={carerId}
-          existing={editActivity}
-          onClose={() => setEditActivity(null)}
-          onSaved={() => { setEditActivity(null); fetchData(); }}
-        />
+        <LogModal type={editActivity.type} babyId={babyId} carerId={carerId} existing={editActivity}
+          onClose={() => setEditActivity(null)} onSaved={() => { setEditActivity(null); fetchData(); }} />
       )}
       {showShare && baby && <ShareModal code={baby.code} babyName={baby.name} onClose={() => setShowShare(false)} />}
       <InstallBanner />
