@@ -21,7 +21,9 @@ export async function subscribeToPush(carerId: string, babyId: string): Promise<
     return { ok: false, reason: "Push notifications are not supported in this browser.\n\niPhone users: open the app in Safari and install it to the Home Screen first." };
   }
 
-  const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  // VAPID public key — safe to hardcode, it's a public key by design
+  const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    || "BHwB5CAS8e8Mwg1rPVCpZTFGriUr-r52KR4-fvp3aKAcA76tD902chuqtDK14oWZbSCCCyTA3FDkTi8qAr-2E44";
   if (!vapidKey) {
     return { ok: false, reason: "Configuration error: VAPID key missing. Please contact support." };
   }
