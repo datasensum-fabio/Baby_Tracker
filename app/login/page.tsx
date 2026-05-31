@@ -44,7 +44,11 @@ export default function LoginPage() {
         setMode("login");
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (e && typeof e === "object" && "message" in e) {
+        setError(String((e as { message: unknown }).message));
+      } else {
+        setError("Something went wrong.");
+      }
     } finally {
       setLoading(false);
     }

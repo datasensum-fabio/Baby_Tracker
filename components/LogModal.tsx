@@ -110,7 +110,7 @@ export default function LogModal({ type, existing, onClose, onSaved }: Props) {
       }
       onSaved();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to save.");
+      setError(e && typeof e === "object" && "message" in e ? String((e as {message:unknown}).message) : "Failed to save.");
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,7 @@ export default function LogModal({ type, existing, onClose, onSaved }: Props) {
       if (err) throw err;
       onSaved();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to delete.");
+      setError(e && typeof e === "object" && "message" in e ? String((e as {message:unknown}).message) : "Failed to delete.");
       setDeleting(false);
       setConfirmDelete(false);
     }

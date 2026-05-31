@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { generateCode } from "@/lib/helpers";
 
+function errMsg(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
+  return "Something went wrong.";
+}
+
 export default function SetupPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"choose" | "new" | "join">("choose");
@@ -49,7 +54,7 @@ export default function SetupPage() {
       localStorage.setItem("baby_code", code);
       router.push("/");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setError(errMsg(e));
     } finally {
       setLoading(false);
     }
@@ -86,7 +91,7 @@ export default function SetupPage() {
       localStorage.setItem("baby_code", baby.code);
       router.push("/");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setError(errMsg(e));
     } finally {
       setLoading(false);
     }
