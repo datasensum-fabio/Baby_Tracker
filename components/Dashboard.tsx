@@ -8,7 +8,7 @@ import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivit
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
-import { Share2, RefreshCw, Pencil, ArrowLeft } from "lucide-react";
+import { Share2, RefreshCw, Pencil, ArrowLeft, Trash2 } from "lucide-react";
 import {
   differenceInMinutes, differenceInDays, differenceInWeeks, differenceInMonths,
   format, isToday, isYesterday,
@@ -85,7 +85,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
       supabase.from("babies").select().eq("id", babyId).single(),
       supabase.from("carers").select().eq("id", carerId).single(),
       supabase.from("activities").select("*, carers(name)")
-        .eq("baby_id", babyId).order("logged_at", { ascending: false }).limit(200),
+        .eq("baby_id", babyId).is("deleted_at", null).order("logged_at", { ascending: false }).limit(200),
     ]);
     if (babyData) setBaby(babyData);
     if (carerData) setCarer(carerData);
@@ -177,6 +177,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           <div className="flex gap-2">
             <button onClick={fetchData} className="p-2 bg-white/20 rounded-full active:bg-white/30"><RefreshCw size={18} /></button>
             <button onClick={() => setShowShare(true)} className="p-2 bg-white/20 rounded-full active:bg-white/30"><Share2 size={18} /></button>
+            <button onClick={() => router.push(`/baby/${babyId}/deleted`)} className="p-2 bg-white/20 rounded-full active:bg-white/30"><Trash2 size={18} /></button>
           </div>
         </div>
       </div>

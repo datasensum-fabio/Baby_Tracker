@@ -149,7 +149,7 @@ export default function ActivityPage() {
       supabase.from("carers").select("id").eq("baby_id", babyId).eq("user_id", user.id).single(),
       supabase.from("babies").select("name").eq("id", babyId).single(),
       supabase.from("activities").select("*, carers(name)")
-        .eq("baby_id", babyId).eq("type", type)
+        .eq("baby_id", babyId).eq("type", type).is("deleted_at", null)
         .gte("logged_at", sevenDaysAgo)
         .order("logged_at", { ascending: false }),
     ]);
@@ -168,7 +168,7 @@ export default function ActivityPage() {
   async function loadMore() {
     setLoadingMore(true);
     const { data: acts } = await supabase.from("activities").select("*, carers(name)")
-      .eq("baby_id", babyId).eq("type", type)
+      .eq("baby_id", babyId).eq("type", type).is("deleted_at", null)
       .lt("logged_at", sevenDaysAgo)
       .order("logged_at", { ascending: false });
     if (acts) {

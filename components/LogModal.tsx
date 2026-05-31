@@ -139,7 +139,10 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
     if (!existing) return;
     setDeleting(true);
     try {
-      const { error: err } = await supabase.from("activities").delete().eq("id", existing.id);
+      // Soft delete — keeps the record for restore
+      const { error: err } = await supabase.from("activities")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", existing.id);
       if (err) throw err;
       onSaved();
     } catch (e) { setError(errMsg(e)); setDeleting(false); setConfirmDelete(false); }
@@ -168,7 +171,7 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
         {/* Delete confirm */}
         {confirmDelete && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
-            <p className="text-red-700 font-medium text-sm">Delete this activity?</p>
+            <p className="text-red-700 font-medium text-sm">Delete this activity? You can restore it from the trash.</p>
             <div className="flex gap-2">
               <button onClick={handleDelete} disabled={deleting}
                 className="flex-1 bg-red-500 text-white rounded-xl py-2 font-semibold text-sm disabled:opacity-50">
