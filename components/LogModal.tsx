@@ -121,9 +121,14 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
 
   function buildDetails(): Record<string, unknown> | null {
     if (type === "feed") {
+      if (feedType === "formula" || feedType === "bottle") {
+        if (!amountMl || parseFloat(amountMl) <= 0) { setError("Please enter the amount in ml."); return null; }
+      } else {
+        if (!durationMin || parseFloat(durationMin) <= 0) { setError("Please enter the duration in minutes."); return null; }
+      }
       const d: Record<string, unknown> = { feed_type: feedType };
-      if (feedType === "formula" || feedType === "bottle") { if (amountMl) d.amount_ml = parseFloat(amountMl); }
-      else { if (durationMin) d.duration_min = parseFloat(durationMin); }
+      if (feedType === "formula" || feedType === "bottle") d.amount_ml = parseFloat(amountMl);
+      else d.duration_min = parseFloat(durationMin);
       return d;
     }
     if (type === "sleep") {
@@ -274,13 +279,13 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
             </div>
             {feedType === "formula" || feedType === "bottle" ? (
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Amount (ml)</label>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Amount (ml) <span className="text-red-400">*</span></label>
                 <input type="number" value={amountMl} onChange={(e) => setAmountMl(e.target.value)} placeholder="e.g. 120"
                   className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Duration (minutes)</label>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Duration (minutes) <span className="text-red-400">*</span></label>
                 <input type="number" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} placeholder="e.g. 15"
                   className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
               </div>
