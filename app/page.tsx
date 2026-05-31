@@ -38,10 +38,13 @@ export default function Home() {
       if (!user) { router.replace("/login"); return; }
       setUserEmail(user.email ?? "");
 
-      const { data } = await supabase
+      const { data, error: carerErr } = await supabase
         .from("carers")
         .select("id, baby_id, role, babies(id, name, birth_date, code)")
         .eq("user_id", user.id);
+
+      if (carerErr) console.error("Carers query error:", carerErr);
+      console.log("Carers data:", data);
 
       if (data) {
         setBabies(
