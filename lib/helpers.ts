@@ -1,8 +1,18 @@
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow, format, differenceInMinutes } from "date-fns";
 import { ActivityType, Activity } from "./types";
 
 export function timeAgo(date: string): string {
   return formatDistanceToNow(new Date(date), { addSuffix: true });
+}
+
+export function preciseTimeAgo(date: string): string {
+  const mins = differenceInMinutes(new Date(), new Date(date));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (m === 0) return `${h}h ago`;
+  return `${h}h ${m}min ago`;
 }
 
 export function formatTime(date: string): string {

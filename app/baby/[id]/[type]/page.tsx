@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Activity, ActivityType } from "@/lib/types";
-import { activityEmoji, activityLabel, timeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
+import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
 import LogModal from "@/components/LogModal";
 import { ArrowLeft, Plus, Pencil } from "lucide-react";
 import { differenceInMinutes, format, isToday, isYesterday } from "date-fns";
@@ -157,7 +157,9 @@ export default function ActivityPage() {
           {last ? (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className={`text-2xl font-bold ${alert ? "text-red-600" : "text-gray-800"}`}>{timeAgo(last.logged_at)}</p>
+                <p className={`text-2xl font-bold ${alert ? "text-red-600" : "text-gray-800"}`}>
+                {type === "feed" ? preciseTimeAgo(last.logged_at) : timeAgo(last.logged_at)}
+              </p>
                 <p className="text-sm text-gray-600 mt-0.5">{summariseActivity(last)}</p>
                 {type === "feed" && det(last).amount_ml != null && (
                   <p className={`text-sm font-semibold mt-0.5 ${accentText[type]}`}>{String(det(last).amount_ml)} ml</p>

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Activity, ActivityType, Baby, Carer } from "@/lib/types";
-import { activityEmoji, activityLabel, timeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
+import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
@@ -171,7 +171,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
                 <div>
                   <p className="text-xs text-gray-400 uppercase tracking-wide">Last feed</p>
                   <p className={`text-2xl font-bold mt-0.5 ${feedAlert ? "text-red-600" : "text-gray-800"}`}>
-                    {timeAgo(lastFeed.logged_at)}
+                    {preciseTimeAgo(lastFeed.logged_at)}
                   </p>
                   <p className="text-sm text-gray-500 mt-0.5">{summariseActivity(lastFeed)}</p>
                   {det(lastFeed).amount_ml != null && (
