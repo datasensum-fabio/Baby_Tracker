@@ -7,7 +7,8 @@ import { activityEmoji, activityLabel, timeAgo, summariseActivity, formatDateTim
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
-import { Share2, RefreshCw, Pencil } from "lucide-react";
+import { Share2, RefreshCw, Pencil, LogOut } from "lucide-react";
+import { signOut } from "@/lib/auth";
 import { differenceInDays, differenceInWeeks, differenceInMonths, format, isToday, isYesterday } from "date-fns";
 
 const ACTIVITY_TYPES: ActivityType[] = ["feed", "sleep", "medication", "nappy"];
@@ -134,6 +135,9 @@ export default function Dashboard() {
             </button>
             <button onClick={() => setShowShare(true)} className="p-2 bg-white/20 rounded-full active:bg-white/30">
               <Share2 size={18} />
+            </button>
+            <button onClick={signOut} className="p-2 bg-white/20 rounded-full active:bg-white/30">
+              <LogOut size={18} />
             </button>
           </div>
         </div>

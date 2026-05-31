@@ -11,34 +11,35 @@ export default function SetupPage() {
   const [babyName, setBabyName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [carerName, setCarerName] = useState("");
-  const [carerRole, setCarerRole] = useState("Parent");
+  const [carerRole, setCarerRole] = useState("Mum");
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const roles = ["Mum", "Dad", "Granny", "Grandad", "Aunt", "Uncle", "Nanny", "Other"];
 
+  async function getCurrentUser() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.replace("/login"); return null; }
+    return user;
+  }
+
   async function handleCreate() {
-    if (!babyName.trim() || !carerName.trim()) {
-      setError("Please fill in all fields.");
-      return;
-    }
+    if (!babyName.trim() || !carerName.trim()) { setError("Please fill in all fields."); return; }
+    const user = await getCurrentUser();
+    if (!user) return;
     setLoading(true);
     setError("");
     try {
       const code = generateCode();
       const { data: baby, error: babyErr } = await supabase
-        .from("babies")
-        .insert({ name: babyName.trim(), birth_date: birthDate || null, code })
-        .select()
-        .single();
+        .from("babies").insert({ name: babyName.trim(), birth_date: birthDate || null, code })
+        .select().single();
       if (babyErr) throw babyErr;
 
       const { data: carer, error: carerErr } = await supabase
-        .from("carers")
-        .insert({ baby_id: baby.id, name: carerName.trim(), role: carerRole })
-        .select()
-        .single();
+        .from("carers").insert({ baby_id: baby.id, name: carerName.trim(), role: carerRole, user_id: user.id })
+        .select().single();
       if (carerErr) throw carerErr;
 
       localStorage.setItem("baby_id", baby.id);
@@ -53,28 +54,29 @@ export default function SetupPage() {
   }
 
   async function handleJoin() {
-    if (!joinCode.trim() || !carerName.trim()) {
-      setError("Please fill in all fields.");
-      return;
-    }
+    if (!joinCode.trim() || !carerName.trim()) { setError("Please fill in all fields."); return; }
+    const user = await getCurrentUser();
+    if (!user) return;
     setLoading(true);
     setError("");
     try {
       const { data: baby, error: babyErr } = await supabase
-        .from("babies")
-        .select()
-        .eq("code", joinCode.trim().toUpperCase())
-        .single();
-      if (babyErr || !baby) {
-        setError("Baby code not found. Check the code and try again.");
+        .from("babies").select().eq("code", joinCode.trim().toUpperCase()).single();
+      if (babyErr || !baby) { setError("Baby code not found. Check the code and try again."); setLoading(false); return; }
+
+      // Check if this user already has a carer record for this baby
+      const { data: existing } = await supabase
+        .from("carers").select("id").eq("baby_id", baby.id).eq("user_id", user.id).single();
+      if (existing) {
+        localStorage.setItem("baby_id", baby.id);
+        localStorage.setItem("carer_id", existing.id);
+        router.push("/");
         return;
       }
 
       const { data: carer, error: carerErr } = await supabase
-        .from("carers")
-        .insert({ baby_id: baby.id, name: carerName.trim(), role: carerRole })
-        .select()
-        .single();
+        .from("carers").insert({ baby_id: baby.id, name: carerName.trim(), role: carerRole, user_id: user.id })
+        .select().single();
       if (carerErr) throw carerErr;
 
       localStorage.setItem("baby_id", baby.id);
@@ -99,16 +101,12 @@ export default function SetupPage() {
 
         {mode === "choose" && (
           <div className="space-y-3">
-            <button
-              onClick={() => setMode("new")}
-              className="w-full bg-sleep text-white rounded-2xl p-4 text-lg font-semibold shadow-lg active:scale-95 transition-transform"
-            >
+            <button onClick={() => setMode("new")}
+              className="w-full bg-sleep text-white rounded-2xl p-4 text-lg font-semibold shadow-lg active:scale-95 transition-transform">
               🍼 Add a new baby
             </button>
-            <button
-              onClick={() => setMode("join")}
-              className="w-full bg-white border-2 border-sleep text-sleep rounded-2xl p-4 text-lg font-semibold shadow active:scale-95 transition-transform"
-            >
+            <button onClick={() => setMode("join")}
+              className="w-full bg-white border-2 border-sleep text-sleep rounded-2xl p-4 text-lg font-semibold shadow active:scale-95 transition-transform">
               🔗 Join with a code
             </button>
           </div>
@@ -119,54 +117,32 @@ export default function SetupPage() {
             <h2 className="text-xl font-bold text-gray-800">New baby setup</h2>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Baby&apos;s name *</label>
-              <input
-                type="text"
-                value={babyName}
-                onChange={(e) => setBabyName(e.target.value)}
-                placeholder="e.g. Emma"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep"
-              />
+              <input type="text" value={babyName} onChange={(e) => setBabyName(e.target.value)} placeholder="e.g. Emma"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Date of birth (optional)</label>
-              <input
-                type="date"
-                value={birthDate}
-                onChange={(e) => setBirthDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep"
-              />
+              <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Your name *</label>
-              <input
-                type="text"
-                value={carerName}
-                onChange={(e) => setCarerName(e.target.value)}
-                placeholder="e.g. Sarah"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep"
-              />
+              <input type="text" value={carerName} onChange={(e) => setCarerName(e.target.value)} placeholder="e.g. Sarah"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Your role</label>
-              <select
-                value={carerRole}
-                onChange={(e) => setCarerRole(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep bg-white"
-              >
+              <select value={carerRole} onChange={(e) => setCarerRole(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-sleep bg-white">
                 {roles.map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
             {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button
-              onClick={handleCreate}
-              disabled={loading}
-              className="w-full bg-sleep text-white rounded-xl p-4 text-lg font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-            >
+            <button onClick={handleCreate} disabled={loading}
+              className="w-full bg-sleep text-white rounded-xl p-4 text-lg font-semibold disabled:opacity-50 active:scale-95 transition-transform">
               {loading ? "Creating..." : "Get started →"}
             </button>
-            <button onClick={() => { setMode("choose"); setError(""); }} className="w-full text-gray-400 text-sm py-1">
-              ← Back
-            </button>
+            <button onClick={() => { setMode("choose"); setError(""); }} className="w-full text-gray-400 text-sm py-1">← Back</button>
           </div>
         )}
 
@@ -175,45 +151,28 @@ export default function SetupPage() {
             <h2 className="text-xl font-bold text-gray-800">Join a baby</h2>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Baby code *</label>
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              <input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                 placeholder="e.g. STAR-MOON-1234"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-feed tracking-wider"
-              />
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-feed tracking-wider" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Your name *</label>
-              <input
-                type="text"
-                value={carerName}
-                onChange={(e) => setCarerName(e.target.value)}
-                placeholder="e.g. Gran"
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-feed"
-              />
+              <input type="text" value={carerName} onChange={(e) => setCarerName(e.target.value)} placeholder="e.g. Gran"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-feed" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Your role</label>
-              <select
-                value={carerRole}
-                onChange={(e) => setCarerRole(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-feed bg-white"
-              >
+              <select value={carerRole} onChange={(e) => setCarerRole(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-feed bg-white">
                 {roles.map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
             {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button
-              onClick={handleJoin}
-              disabled={loading}
-              className="w-full bg-feed text-white rounded-xl p-4 text-lg font-semibold disabled:opacity-50 active:scale-95 transition-transform"
-            >
+            <button onClick={handleJoin} disabled={loading}
+              className="w-full bg-feed text-white rounded-xl p-4 text-lg font-semibold disabled:opacity-50 active:scale-95 transition-transform">
               {loading ? "Joining..." : "Join →"}
             </button>
-            <button onClick={() => { setMode("choose"); setError(""); }} className="w-full text-gray-400 text-sm py-1">
-              ← Back
-            </button>
+            <button onClick={() => { setMode("choose"); setError(""); }} className="w-full text-gray-400 text-sm py-1">← Back</button>
           </div>
         )}
       </div>
