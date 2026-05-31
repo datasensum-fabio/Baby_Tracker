@@ -68,6 +68,7 @@ export default function SettingsPage() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [pushError, setPushError] = useState("");
   const [carerId, setCarerId] = useState("");
 
   // New drug form
@@ -351,13 +352,17 @@ export default function SettingsPage() {
               disabled={pushLoading}
               onClick={async () => {
                 setPushLoading(true);
+                setPushError("");
                 if (pushEnabled) {
                   await unsubscribeFromPush();
                   setPushEnabled(false);
                 } else {
-                  const ok = await subscribeToPush(carerId, babyId);
-                  setPushEnabled(ok);
-                  if (!ok) alert("Could not enable notifications. Make sure you allow notifications for this site.");
+                  const result = await subscribeToPush(carerId, babyId);
+                  if (result.ok) {
+                    setPushEnabled(true);
+                  } else {
+                    setPushError(result.reason);
+                  }
                 }
                 setPushLoading(false);
               }}
@@ -366,6 +371,13 @@ export default function SettingsPage() {
             >
               <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-0"}`} />
             </button>
+          </div>
+        )}
+
+        {pushError && (
+          <div className="bg-red-50 rounded-2xl p-4 text-sm text-red-700 border border-red-100">
+            <p className="font-semibold mb-0.5">Could not enable notifications</p>
+            <p className="text-xs whitespace-pre-line">{pushError}</p>
           </div>
         )}
 
