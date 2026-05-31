@@ -8,7 +8,8 @@ import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivit
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
-import { Share2, RefreshCw, Pencil, ArrowLeft } from "lucide-react";
+import { Share2, RefreshCw, Pencil, ArrowLeft, Settings } from "lucide-react";
+import { loadSettings, BabySettings, DEFAULT_SETTINGS } from "@/lib/settings";
 import {
   differenceInMinutes, differenceInDays, differenceInWeeks, differenceInMonths,
   format, isToday, isYesterday,
@@ -67,6 +68,13 @@ function isAlert(last: Activity | undefined, type: ActivityType): boolean {
   return false;
 }
 
+function minsToLabel(mins: number): string {
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 interface Props { babyId: string; carerId: string; }
 
 export default function Dashboard({ babyId, carerId }: Props) {
@@ -79,16 +87,19 @@ export default function Dashboard({ babyId, carerId }: Props) {
   const [showShare, setShowShare] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sleepToggling, setSleepToggling] = useState(false);
+  const [settings, setSettings] = useState<BabySettings>(DEFAULT_SETTINGS);
 
   const fetchData = useCallback(async () => {
-    const [{ data: babyData }, { data: carerData }, { data: actData }] = await Promise.all([
+    const [{ data: babyData }, { data: carerData }, { data: actData }, s] = await Promise.all([
       supabase.from("babies").select().eq("id", babyId).single(),
       supabase.from("carers").select().eq("id", carerId).single(),
       supabase.from("activities").select("*, carers(name)")
         .eq("baby_id", babyId).is("deleted_at", null).order("logged_at", { ascending: false }).limit(200),
+      loadSettings(babyId),
     ]);
     if (babyData) setBaby(babyData);
     if (carerData) setCarer(carerData);
+    setSettings(s);
     if (actData) {
       setActivities(actData.map((a: Activity & { carers?: { name: string } }) => ({
         ...a, carer_name: a.carers?.name ?? "Unknown",
@@ -156,8 +167,13 @@ export default function Dashboard({ babyId, carerId }: Props) {
   const lastSleep = lastOf("sleep");
   const lastMed = lastOf("medication");
   const lastNappy = lastOf("nappy");
-  const feedAlert = isAlert(lastFeed, "feed");
-  const medAlert = isAlert(lastMed, "medication");
+  function alertCheck(last: Activity | undefined, thresholdMin: number | null): boolean {
+    if (!last || thresholdMin === null) return false;
+    return differenceInMinutes(new Date(), new Date(last.logged_at)) > thresholdMin;
+  }
+  const feedAlert = alertCheck(lastFeed, settings.feed_alert_min);
+  const medAlert = alertCheck(lastMed, settings.medication_alert_min);
+  const nappyAlert = alertCheck(lastNappy, settings.nappy_alert_min);
 
   return (
     <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
@@ -177,6 +193,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           <div className="flex gap-2">
             <button onClick={fetchData} className="p-2 bg-white/20 rounded-full active:bg-white/30"><RefreshCw size={18} /></button>
             <button onClick={() => setShowShare(true)} className="p-2 bg-white/20 rounded-full active:bg-white/30"><Share2 size={18} /></button>
+            <button onClick={() => router.push(`/baby/${babyId}/settings`)} className="p-2 bg-white/20 rounded-full active:bg-white/30"><Settings size={18} /></button>
             <button onClick={() => router.push(`/baby/${babyId}/deleted`)} className="px-3 py-1.5 bg-white/20 rounded-full text-xs font-medium active:bg-white/30">Deleted logs</button>
           </div>
         </div>
@@ -193,7 +210,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           >
             <div className="flex items-center justify-between">
               <p className="text-xl font-bold flex items-center gap-2">🍼 Feed</p>
-              {feedAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over 3 hours!</span>}
+              {feedAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over {minsToLabel(settings.feed_alert_min!)}!</span>}
             </div>
             {lastFeed ? (
               <div className="mt-2 grid grid-cols-2 gap-3">
@@ -260,8 +277,11 @@ export default function Dashboard({ babyId, carerId }: Props) {
             })()}
             {/* Nappy */}
             <button onClick={() => router.push(`/baby/${babyId}/nappy`)}
-              className="bg-white rounded-2xl p-3 border-l-4 border-l-nappy shadow-sm text-left active:scale-[0.98]">
-              <p className="font-bold flex items-center gap-1">🩲 Nappy</p>
+              className={`rounded-2xl p-3 border-l-4 border-l-nappy shadow-sm text-left active:scale-[0.98] ${nappyAlert ? "bg-red-50" : "bg-white"}`}>
+              <div className="flex items-center justify-between">
+                <p className="font-bold">🩲 Nappy</p>
+                {nappyAlert && <span className="text-[10px] bg-red-100 text-red-600 font-semibold px-1.5 py-0.5 rounded-full">Over {minsToLabel(settings.nappy_alert_min!)}!</span>}
+              </div>
               {lastNappy ? (
                 <>
                   <p className="text-xs text-gray-500 mt-1">{timeAgo(lastNappy.logged_at)}</p>
@@ -282,7 +302,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           >
             <div className="flex items-center justify-between">
               <p className="text-xl font-bold">💊 Medication</p>
-              {medAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over 12 hours!</span>}
+              {medAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over {minsToLabel(settings.medication_alert_min!)}!</span>}
             </div>
             {lastMed ? (
               <div className="mt-2 grid grid-cols-2 gap-3">
