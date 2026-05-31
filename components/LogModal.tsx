@@ -9,6 +9,8 @@ import { format } from "date-fns";
 
 interface Props {
   type: ActivityType;
+  babyId: string;
+  carerId: string;
   existing?: Activity;
   onClose: () => void;
   onSaved: () => void;
@@ -27,7 +29,7 @@ function initField<T>(existing: Activity | undefined, key: string, fallback: T):
   return val !== undefined ? (val as T) : fallback;
 }
 
-export default function LogModal({ type, existing, onClose, onSaved }: Props) {
+export default function LogModal({ type, babyId, carerId, existing, onClose, onSaved }: Props) {
   const isEdit = !!existing;
 
   const [loading, setLoading] = useState(false);
@@ -98,9 +100,6 @@ export default function LogModal({ type, existing, onClose, onSaved }: Props) {
           .eq("id", existing.id);
         if (err) throw err;
       } else {
-        const babyId = localStorage.getItem("baby_id");
-        const carerId = localStorage.getItem("carer_id");
-        if (!babyId || !carerId) return;
         const { error: err } = await supabase.from("activities").insert({
           baby_id: babyId, carer_id: carerId, type, details,
           notes: notes.trim() || null,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { generateCode } from "@/lib/helpers";
 
@@ -10,9 +10,15 @@ function errMsg(e: unknown): string {
   return "Something went wrong.";
 }
 
-export default function SetupPage() {
+function SetupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<"choose" | "new" | "join">("choose");
+
+  useEffect(() => {
+    const m = searchParams.get("mode");
+    if (m === "new" || m === "join") setMode(m);
+  }, [searchParams]);
   const [babyName, setBabyName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [carerName, setCarerName] = useState("");
@@ -49,10 +55,7 @@ export default function SetupPage() {
         .from("carers").insert({ id: carerId, baby_id: babyId, name: carerName.trim(), role: carerRole, user_id: user.id });
       if (carerErr) throw carerErr;
 
-      localStorage.setItem("baby_id", babyId);
-      localStorage.setItem("carer_id", carerId);
-      localStorage.setItem("baby_code", code);
-      router.push("/");
+      router.push(`/baby/${babyId}`);
     } catch (e: unknown) {
       setError(errMsg(e));
     } finally {
@@ -75,9 +78,7 @@ export default function SetupPage() {
       const { data: existing } = await supabase
         .from("carers").select("id").eq("baby_id", baby.id).eq("user_id", user.id).single();
       if (existing) {
-        localStorage.setItem("baby_id", baby.id);
-        localStorage.setItem("carer_id", existing.id);
-        router.push("/");
+        router.push(`/baby/${baby.id}`);
         return;
       }
 
@@ -86,10 +87,7 @@ export default function SetupPage() {
         .from("carers").insert({ id: carerId, baby_id: baby.id, name: carerName.trim(), role: carerRole, user_id: user.id });
       if (carerErr) throw carerErr;
 
-      localStorage.setItem("baby_id", baby.id);
-      localStorage.setItem("carer_id", carerId);
-      localStorage.setItem("baby_code", baby.code);
-      router.push("/");
+      router.push(`/baby/${baby.id}`);
     } catch (e: unknown) {
       setError(errMsg(e));
     } finally {
@@ -184,5 +182,13 @@ export default function SetupPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SetupPageWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-4xl animate-bounce">👶</div></div>}>
+      <SetupPage />
+    </Suspense>
   );
 }

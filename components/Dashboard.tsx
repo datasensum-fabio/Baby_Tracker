@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Activity, ActivityType, Baby, Carer } from "@/lib/types";
 import { activityEmoji, activityLabel, timeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
-import { Share2, RefreshCw, Pencil, LogOut } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { Share2, RefreshCw, Pencil, ArrowLeft } from "lucide-react";
 import { differenceInDays, differenceInWeeks, differenceInMonths, format, isToday, isYesterday } from "date-fns";
 
 const ACTIVITY_TYPES: ActivityType[] = ["feed", "sleep", "medication", "nappy"];
@@ -47,7 +47,13 @@ function groupByDate(activities: Activity[]): { label: string; items: Activity[]
   }));
 }
 
-export default function Dashboard() {
+interface Props {
+  babyId: string;
+  carerId: string;
+}
+
+export default function Dashboard({ babyId, carerId }: Props) {
+  const router = useRouter();
   const [baby, setBaby] = useState<Baby | null>(null);
   const [carer, setCarer] = useState<Carer | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -56,11 +62,7 @@ export default function Dashboard() {
   const [showShare, setShowShare] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const babyId = typeof window !== "undefined" ? localStorage.getItem("baby_id") : null;
-  const carerId = typeof window !== "undefined" ? localStorage.getItem("carer_id") : null;
-
   const fetchData = useCallback(async () => {
-    if (!babyId || !carerId) return;
     const [{ data: babyData }, { data: carerData }, { data: actData }] = await Promise.all([
       supabase.from("babies").select().eq("id", babyId).single(),
       supabase.from("carers").select().eq("id", carerId).single(),
@@ -86,9 +88,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    if (!babyId) return;
     const channel = supabase
-      .channel("activities")
+      .channel(`activities-${babyId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "activities", filter: `baby_id=eq.${babyId}` }, fetchData)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -124,10 +125,15 @@ export default function Dashboard() {
       {/* Header */}
       <div className="bg-gradient-to-r from-sleep to-feed px-5 pt-10 pb-6 text-white">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">{baby?.name ?? "Baby"} 👶</h1>
-            {baby?.birth_date && <p className="text-white/80 text-sm mt-0.5">{babyAge()}</p>}
-            <p className="text-white/70 text-sm mt-1">Hi, {carer?.name} ({carer?.role})</p>
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.push("/")} className="p-2 bg-white/20 rounded-full active:bg-white/30">
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold">{baby?.name ?? "Baby"} 👶</h1>
+              {baby?.birth_date && <p className="text-white/80 text-sm mt-0.5">{babyAge()}</p>}
+              <p className="text-white/70 text-sm mt-0.5">Hi, {carer?.name} ({carer?.role})</p>
+            </div>
           </div>
           <div className="flex gap-2">
             <button onClick={fetchData} className="p-2 bg-white/20 rounded-full active:bg-white/30">
@@ -135,9 +141,6 @@ export default function Dashboard() {
             </button>
             <button onClick={() => setShowShare(true)} className="p-2 bg-white/20 rounded-full active:bg-white/30">
               <Share2 size={18} />
-            </button>
-            <button onClick={signOut} className="p-2 bg-white/20 rounded-full active:bg-white/30">
-              <LogOut size={18} />
             </button>
           </div>
         </div>
@@ -228,6 +231,8 @@ export default function Dashboard() {
       {logType && (
         <LogModal
           type={logType}
+          babyId={babyId}
+          carerId={carerId}
           onClose={() => setLogType(null)}
           onSaved={() => { setLogType(null); fetchData(); }}
         />
@@ -235,6 +240,8 @@ export default function Dashboard() {
       {editActivity && (
         <LogModal
           type={editActivity.type}
+          babyId={babyId}
+          carerId={carerId}
           existing={editActivity}
           onClose={() => setEditActivity(null)}
           onSaved={() => { setEditActivity(null); fetchData(); }}
