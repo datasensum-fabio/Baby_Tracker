@@ -262,6 +262,25 @@ export default function Dashboard({ babyId, carerId }: Props) {
           </button>
         </div>
 
+        {/* Log an activity */}
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Log an activity</p>
+          <div className="grid grid-cols-2 gap-3">
+            {(["feed", "sleep", "medication", "nappy"] as ActivityType[]).map((t) => (
+              <button key={t} onClick={() => router.push(`/baby/${babyId}/${t}`)}
+                className={{
+                  feed: "bg-feed hover:bg-feed-dark active:bg-feed-dark",
+                  sleep: "bg-sleep hover:bg-sleep-dark active:bg-sleep-dark",
+                  medication: "bg-medication hover:bg-medication-dark active:bg-medication-dark",
+                  nappy: "bg-nappy hover:bg-nappy-dark active:bg-nappy-dark",
+                }[t] + " text-white rounded-2xl p-4 flex items-center gap-3 shadow active:scale-95 transition-transform"}>
+                <span className="text-2xl">{activityEmoji(t)}</span>
+                <span className="text-lg font-semibold">{activityLabel(t)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Activity log grouped by date */}
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Activity log</p>
