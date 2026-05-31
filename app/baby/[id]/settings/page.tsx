@@ -7,7 +7,8 @@ import { loadSettings, saveSettings, BabySettings } from "@/lib/settings";
 import { Drug } from "@/lib/types";
 import { ActivityType } from "@/lib/types";
 import { activityEmoji, activityLabel } from "@/lib/helpers";
-import { ArrowLeft, Check, Plus, Trash2, Star } from "lucide-react";
+import { ArrowLeft, Check, Plus, Trash2, Star, Bell, BellOff } from "lucide-react";
+import { subscribeToPush, unsubscribeFromPush, isPushSubscribed, isPushSupported } from "@/lib/pushClient";
 
 const NON_MED_TYPES: ActivityType[] = ["feed", "sleep", "nappy"];
 
@@ -64,6 +65,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [carerId, setCarerId] = useState("");
 
   // New drug form
   const [showAddDrug, setShowAddDrug] = useState(false);
@@ -79,6 +84,7 @@ export default function SettingsPage() {
       if (!user) { router.replace("/login"); return; }
       const { data: carer } = await supabase.from("carers").select("id").eq("baby_id", babyId).eq("user_id", user.id).single();
       if (!carer) { router.replace("/"); return; }
+      setCarerId(carer.id);
       const { data: baby } = await supabase.from("babies").select("name").eq("id", babyId).single();
       if (baby) setBabyName(baby.name);
       const [s, { data: drugsData }] = await Promise.all([
@@ -87,6 +93,8 @@ export default function SettingsPage() {
       ]);
       setSettings(s);
       if (drugsData) setDrugs(drugsData);
+      setPushSupported(isPushSupported());
+      setPushEnabled(await isPushSubscribed());
       setLoading(false);
     }
     load();
@@ -328,6 +336,45 @@ export default function SettingsPage() {
             })}
           </div>
         </div>
+
+        {/* ── PUSH NOTIFICATIONS ── */}
+        {pushSupported && (
+          <div className="bg-white rounded-2xl shadow-sm border-l-4 border-sleep p-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {pushEnabled ? <Bell size={22} className="text-sleep flex-shrink-0" /> : <BellOff size={22} className="text-gray-300 flex-shrink-0" />}
+              <div>
+                <p className="font-semibold text-gray-800">Push notifications</p>
+                <p className="text-xs text-gray-400">{pushEnabled ? "You'll get notified when alerts trigger" : "Enable to get alerts on this device"}</p>
+              </div>
+            </div>
+            <button
+              disabled={pushLoading}
+              onClick={async () => {
+                setPushLoading(true);
+                if (pushEnabled) {
+                  await unsubscribeFromPush();
+                  setPushEnabled(false);
+                } else {
+                  const ok = await subscribeToPush(carerId, babyId);
+                  setPushEnabled(ok);
+                  if (!ok) alert("Could not enable notifications. Make sure you allow notifications for this site.");
+                }
+                setPushLoading(false);
+              }}
+              className={`relative inline-flex h-7 w-13 items-center rounded-full transition-colors disabled:opacity-50 px-1 ${pushEnabled ? "bg-sleep" : "bg-gray-200"}`}
+              style={{ minWidth: "3.25rem" }}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${pushEnabled ? "translate-x-6" : "translate-x-0"}`} />
+            </button>
+          </div>
+        )}
+
+        {!pushSupported && (
+          <div className="bg-amber-50 rounded-2xl p-4 text-sm text-amber-700 border border-amber-100">
+            <p className="font-semibold mb-0.5">Push notifications not available</p>
+            <p className="text-xs">On iPhone, install the app to the home screen via Safari first, then come back here.</p>
+          </div>
+        )}
 
         <button onClick={handleSave} disabled={saving}
           className="w-full bg-sleep text-white rounded-2xl p-4 text-lg font-semibold disabled:opacity-50 active:scale-95 transition-transform flex items-center justify-center gap-2">
