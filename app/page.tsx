@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { signOut } from "@/lib/auth";
 import { differenceInDays, differenceInWeeks, differenceInMonths } from "date-fns";
 import { Plus, LogOut, Link, ChevronDown, ChevronUp, X, RotateCcw } from "lucide-react";
+import { InstallCard } from "@/components/InstallBanner";
 
 interface BabyEntry {
   carer_id: string;
@@ -178,6 +179,9 @@ export default function Home() {
             <Link size={20} /> Join with a code
           </button>
         </div>
+
+        {/* Install card */}
+        <InstallCard />
 
         {/* Delinked babies */}
         {delinked.length > 0 && (
