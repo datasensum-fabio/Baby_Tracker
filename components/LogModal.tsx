@@ -35,13 +35,13 @@ function errMsg(e: unknown): string {
 }
 
 const TIME_PRESETS = [
-  { label: "Now",    minutes: 0 },
-  { label: "1m ago", minutes: 1 },
-  { label: "5m ago", minutes: 5 },
-  { label: "10m",    minutes: 10 },
-  { label: "15m",    minutes: 15 },
-  { label: "30m",    minutes: 30 },
-  { label: "1h ago", minutes: 60 },
+  { label: "Now",     minutes: 0 },
+  { label: "1m ago",  minutes: 1 },
+  { label: "5m ago",  minutes: 5 },
+  { label: "10m ago", minutes: 10 },
+  { label: "15m ago", minutes: 15 },
+  { label: "30m ago", minutes: 30 },
+  { label: "1h ago",  minutes: 60 },
 ];
 
 function offsetToDateStr(minutesAgo: number): string {

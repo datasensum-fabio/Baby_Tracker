@@ -14,14 +14,6 @@ import {
   format, isToday, isYesterday,
 } from "date-fns";
 
-const ACTIVITY_TYPES: ActivityType[] = ["feed", "sleep", "medication", "nappy"];
-
-const buttonStyle: Record<ActivityType, string> = {
-  feed: "bg-feed hover:bg-feed-dark active:bg-feed-dark",
-  sleep: "bg-sleep hover:bg-sleep-dark active:bg-sleep-dark",
-  medication: "bg-medication hover:bg-medication-dark active:bg-medication-dark",
-  nappy: "bg-nappy hover:bg-nappy-dark active:bg-nappy-dark",
-};
 
 function dateLabel(dateStr: string): string {
   const d = new Date(dateStr);
@@ -165,9 +157,10 @@ export default function Dashboard({ babyId, carerId }: Props) {
         {/* Summary cards */}
         <div className="space-y-3">
 
-          {/* FEED — full-width, big */}
-          <div
-            className={`rounded-2xl p-4 border-l-4 border-l-feed shadow-sm transition-colors ${feedAlert ? "bg-red-50" : "bg-white"}`}
+          {/* FEED — full-width, big, clickable */}
+          <button
+            onClick={() => router.push(`/baby/${babyId}/feed`)}
+            className={`w-full text-left rounded-2xl p-4 border-l-4 border-l-feed shadow-sm transition-colors active:scale-[0.99] ${feedAlert ? "bg-red-50" : "bg-white"}`}
           >
             <div className="flex items-center justify-between">
               <p className="text-xl font-bold flex items-center gap-2">🍼 Feed</p>
@@ -200,12 +193,13 @@ export default function Dashboard({ babyId, carerId }: Props) {
             ) : (
               <p className="text-sm text-gray-400 mt-1">No feed logged yet</p>
             )}
-          </div>
+          </button>
 
-          {/* SLEEP + NAPPY — 2 col */}
+          {/* SLEEP + NAPPY — 2 col, clickable */}
           <div className="grid grid-cols-2 gap-3">
             {/* Sleep */}
-            <div className="bg-white rounded-2xl p-3 border-l-4 border-l-sleep shadow-sm">
+            <button onClick={() => router.push(`/baby/${babyId}/sleep`)}
+              className="bg-white rounded-2xl p-3 border-l-4 border-l-sleep shadow-sm text-left active:scale-[0.98]">
               <p className="font-bold flex items-center gap-1">😴 Sleep</p>
               {lastSleep ? (
                 <>
@@ -217,9 +211,10 @@ export default function Dashboard({ babyId, carerId }: Props) {
                   )}
                 </>
               ) : <p className="text-xs text-gray-400 mt-1">No record yet</p>}
-            </div>
+            </button>
             {/* Nappy */}
-            <div className="bg-white rounded-2xl p-3 border-l-4 border-l-nappy shadow-sm">
+            <button onClick={() => router.push(`/baby/${babyId}/nappy`)}
+              className="bg-white rounded-2xl p-3 border-l-4 border-l-nappy shadow-sm text-left active:scale-[0.98]">
               <p className="font-bold flex items-center gap-1">🩲 Nappy</p>
               {lastNappy ? (
                 <>
@@ -231,11 +226,14 @@ export default function Dashboard({ babyId, carerId }: Props) {
                   )}
                 </>
               ) : <p className="text-xs text-gray-400 mt-1">No record yet</p>}
-            </div>
+            </button>
           </div>
 
-          {/* MEDICATION — full width */}
-          <div className={`rounded-2xl p-4 border-l-4 border-l-medication shadow-sm transition-colors ${medAlert ? "bg-red-50" : "bg-white"}`}>
+          {/* MEDICATION — full width, clickable */}
+          <button
+            onClick={() => router.push(`/baby/${babyId}/medication`)}
+            className={`w-full text-left rounded-2xl p-4 border-l-4 border-l-medication shadow-sm transition-colors active:scale-[0.99] ${medAlert ? "bg-red-50" : "bg-white"}`}
+          >
             <div className="flex items-center justify-between">
               <p className="text-xl font-bold">💊 Medication</p>
               {medAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over 12 hours!</span>}
@@ -261,21 +259,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
             ) : (
               <p className="text-sm text-gray-400 mt-1">No medication logged yet</p>
             )}
-          </div>
-        </div>
-
-        {/* Log buttons */}
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Log an activity</p>
-          <div className="grid grid-cols-2 gap-3">
-            {ACTIVITY_TYPES.map((type) => (
-              <button key={type} onClick={() => setLogType(type)}
-                className={`${buttonStyle[type]} text-white rounded-2xl p-4 flex items-center gap-3 shadow active:scale-95 transition-transform`}>
-                <span className="text-2xl">{activityEmoji(type)}</span>
-                <span className="text-lg font-semibold">{activityLabel(type)}</span>
-              </button>
-            ))}
-          </div>
+          </button>
         </div>
 
         {/* Activity log grouped by date */}
