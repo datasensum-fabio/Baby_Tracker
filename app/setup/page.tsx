@@ -31,20 +31,22 @@ export default function SetupPage() {
     setLoading(true);
     setError("");
     try {
+      // Pre-generate IDs so we don't need to read back before the carer record exists
+      const babyId = crypto.randomUUID();
+      const carerId = crypto.randomUUID();
       const code = generateCode();
-      const { data: baby, error: babyErr } = await supabase
-        .from("babies").insert({ name: babyName.trim(), birth_date: birthDate || null, code })
-        .select().single();
+
+      const { error: babyErr } = await supabase
+        .from("babies").insert({ id: babyId, name: babyName.trim(), birth_date: birthDate || null, code });
       if (babyErr) throw babyErr;
 
-      const { data: carer, error: carerErr } = await supabase
-        .from("carers").insert({ baby_id: baby.id, name: carerName.trim(), role: carerRole, user_id: user.id })
-        .select().single();
+      const { error: carerErr } = await supabase
+        .from("carers").insert({ id: carerId, baby_id: babyId, name: carerName.trim(), role: carerRole, user_id: user.id });
       if (carerErr) throw carerErr;
 
-      localStorage.setItem("baby_id", baby.id);
-      localStorage.setItem("carer_id", carer.id);
-      localStorage.setItem("baby_code", baby.code);
+      localStorage.setItem("baby_id", babyId);
+      localStorage.setItem("carer_id", carerId);
+      localStorage.setItem("baby_code", code);
       router.push("/");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -74,13 +76,13 @@ export default function SetupPage() {
         return;
       }
 
-      const { data: carer, error: carerErr } = await supabase
-        .from("carers").insert({ baby_id: baby.id, name: carerName.trim(), role: carerRole, user_id: user.id })
-        .select().single();
+      const carerId = crypto.randomUUID();
+      const { error: carerErr } = await supabase
+        .from("carers").insert({ id: carerId, baby_id: baby.id, name: carerName.trim(), role: carerRole, user_id: user.id });
       if (carerErr) throw carerErr;
 
       localStorage.setItem("baby_id", baby.id);
-      localStorage.setItem("carer_id", carer.id);
+      localStorage.setItem("carer_id", carerId);
       localStorage.setItem("baby_code", baby.code);
       router.push("/");
     } catch (e: unknown) {
