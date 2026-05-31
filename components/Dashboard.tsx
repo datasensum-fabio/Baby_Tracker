@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Activity, ActivityType, Baby, Carer } from "@/lib/types";
-import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
+import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivity, formatDateTime, isSleeping, sleepDurationMin } from "@/lib/helpers";
 import LogModal from "./LogModal";
 import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
@@ -78,6 +78,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
   const [editActivity, setEditActivity] = useState<Activity | null>(null);
   const [showShare, setShowShare] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sleepToggling, setSleepToggling] = useState(false);
 
   const fetchData = useCallback(async () => {
     const [{ data: babyData }, { data: carerData }, { data: actData }] = await Promise.all([
@@ -106,6 +107,33 @@ export default function Dashboard({ babyId, carerId }: Props) {
 
   function lastOf(type: ActivityType): Activity | undefined {
     return activities.find((a) => a.type === type);
+  }
+
+  async function toggleSleep() {
+    setSleepToggling(true);
+    const last = activities.find((a) => a.type === "sleep");
+    const sleeping = isSleeping(last);
+    try {
+      if (sleeping && last) {
+        // Mark awake: close the active sleep session
+        const d = last.details as unknown as Record<string, unknown>;
+        const endTime = new Date().toISOString();
+        const duration = sleepDurationMin(d.start_time as string, endTime);
+        await supabase.from("activities").update({
+          details: { ...d, end_time: endTime, duration_min: duration },
+        }).eq("id", last.id);
+      } else {
+        // Mark asleep: create new sleep activity
+        await supabase.from("activities").insert({
+          baby_id: babyId, carer_id: carerId, type: "sleep",
+          details: { start_time: new Date().toISOString() },
+          logged_at: new Date().toISOString(),
+        });
+      }
+      await fetchData();
+    } finally {
+      setSleepToggling(false);
+    }
   }
 
   function babyAge(): string {
@@ -195,23 +223,40 @@ export default function Dashboard({ babyId, carerId }: Props) {
             )}
           </button>
 
-          {/* SLEEP + NAPPY — 2 col, clickable */}
+          {/* SLEEP + NAPPY — 2 col */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Sleep */}
-            <button onClick={() => router.push(`/baby/${babyId}/sleep`)}
-              className="bg-white rounded-2xl p-3 border-l-4 border-l-sleep shadow-sm text-left active:scale-[0.98]">
-              <p className="font-bold flex items-center gap-1">😴 Sleep</p>
-              {lastSleep ? (
-                <>
-                  <p className="text-xs text-gray-500 mt-1">{timeAgo(lastSleep.logged_at)}</p>
-                  <p className="text-sm text-gray-700 truncate">{summariseActivity(lastSleep)}</p>
-                  <p className="text-xs text-gray-400">by {lastSleep.carer_name}</p>
+            {/* Sleep — state toggle card */}
+            {(() => {
+              const sleeping = isSleeping(lastSleep);
+              const d = lastSleep ? (lastSleep.details as unknown as Record<string, unknown>) : null;
+              const elapsed = sleeping && d ? differenceInMinutes(new Date(), new Date(d.start_time as string)) : null;
+              return (
+                <div className={`rounded-2xl p-3 border-l-4 border-l-sleep shadow-sm flex flex-col gap-2 ${sleeping ? "bg-sleep/5" : "bg-white"}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold">{sleeping ? "😴 Sleeping" : "☀️ Awake"}</p>
+                    <button onClick={() => router.push(`/baby/${babyId}/sleep`)}
+                      className="text-[10px] text-gray-400 underline">history</button>
+                  </div>
+                  {sleeping && elapsed !== null ? (
+                    <p className="text-lg font-bold text-sleep-dark">
+                      {elapsed >= 60 ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m` : `${elapsed}m`}
+                    </p>
+                  ) : lastSleep && !sleeping && d?.duration_min ? (
+                    <p className="text-sm text-gray-500">Last: {(() => { const m = Number(d.duration_min); return m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`; })()}</p>
+                  ) : null}
                   {dailyTotal(activities, "sleep") && (
-                    <p className="text-xs font-semibold text-sleep-dark mt-1">{dailyTotal(activities, "sleep")}</p>
+                    <p className="text-xs font-semibold text-sleep-dark">{dailyTotal(activities, "sleep")}</p>
                   )}
-                </>
-              ) : <p className="text-xs text-gray-400 mt-1">No record yet</p>}
-            </button>
+                  <button
+                    onClick={toggleSleep}
+                    disabled={sleepToggling}
+                    className={`w-full rounded-xl py-2 text-sm font-semibold text-white active:opacity-80 disabled:opacity-50 transition-colors ${sleeping ? "bg-amber-400" : "bg-sleep"}`}
+                  >
+                    {sleepToggling ? "..." : sleeping ? "☀️ Baby woke up" : "😴 Baby fell asleep"}
+                  </button>
+                </div>
+              );
+            })()}
             {/* Nappy */}
             <button onClick={() => router.push(`/baby/${babyId}/nappy`)}
               className="bg-white rounded-2xl p-3 border-l-4 border-l-nappy shadow-sm text-left active:scale-[0.98]">

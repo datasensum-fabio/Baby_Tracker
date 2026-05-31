@@ -75,9 +75,16 @@ export function summariseActivity(activity: Activity): string {
       return feedType;
     }
     case "sleep": {
-      if (d.duration_min) return `${d.duration_min} min`;
-      if (d.end_time) return "Ended";
-      return "Sleeping...";
+      if (d.end_time && d.duration_min) {
+        const mins = Number(d.duration_min);
+        if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+        return `${mins} min`;
+      }
+      if (d.end_time) return "Completed";
+      // Still sleeping — show elapsed
+      const elapsed = differenceInMinutes(new Date(), new Date(d.start_time as string));
+      if (elapsed >= 60) return `Sleeping · ${Math.floor(elapsed / 60)}h ${elapsed % 60}m`;
+      return `Sleeping · ${elapsed}m`;
     }
     case "medication":
       return `${d.name} ${d.dose}${d.unit}`;
@@ -94,6 +101,16 @@ export function summariseActivity(activity: Activity): string {
     default:
       return "";
   }
+}
+
+export function isSleeping(activity: Activity | undefined): boolean {
+  if (!activity || activity.type !== "sleep") return false;
+  const d = activity.details as unknown as Record<string, unknown>;
+  return !d.end_time;
+}
+
+export function sleepDurationMin(start: string, end: string): number {
+  return differenceInMinutes(new Date(end), new Date(start));
 }
 
 export function generateCode(): string {

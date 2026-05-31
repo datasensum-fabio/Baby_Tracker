@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Activity, ActivityType } from "@/lib/types";
-import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivity, formatDateTime } from "@/lib/helpers";
+import { activityEmoji, activityLabel, timeAgo, preciseTimeAgo, summariseActivity, formatDateTime, isSleeping, sleepDurationMin } from "@/lib/helpers";
 import LogModal from "@/components/LogModal";
 import { ArrowLeft, Plus, Pencil, ChevronDown } from "lucide-react";
 import {
@@ -132,6 +132,7 @@ export default function ActivityPage() {
   const [activities, setActivities] = useState<Activity[]>([]);   // last 7 days
   const [allActivities, setAllActivities] = useState<Activity[] | null>(null); // full history
   const [loading, setLoading] = useState(true);
+  const [sleepToggling, setSleepToggling] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [editActivity, setEditActivity] = useState<Activity | null>(null);
@@ -177,6 +178,32 @@ export default function ActivityPage() {
       setAllActivities(mapped);
     }
     setLoadingMore(false);
+  }
+
+  async function toggleSleep() {
+    if (!carerId) return;
+    setSleepToggling(true);
+    const last = activities[0];
+    const sleeping = isSleeping(last);
+    try {
+      if (sleeping && last) {
+        const d = last.details as unknown as Record<string, unknown>;
+        const endTime = new Date().toISOString();
+        const duration = sleepDurationMin(d.start_time as string, endTime);
+        await supabase.from("activities").update({
+          details: { ...d, end_time: endTime, duration_min: duration },
+        }).eq("id", last.id);
+      } else {
+        await supabase.from("activities").insert({
+          baby_id: babyId, carer_id: carerId, type: "sleep",
+          details: { start_time: new Date().toISOString() },
+          logged_at: new Date().toISOString(),
+        });
+      }
+      await fetchRecent();
+    } finally {
+      setSleepToggling(false);
+    }
   }
 
   useEffect(() => {
@@ -236,48 +263,99 @@ export default function ActivityPage() {
       </div>
 
       <div className="px-4 py-5 space-y-4">
-        {/* Summary card */}
-        <div className={`rounded-2xl p-4 border-l-4 ${borderColor[type]} shadow-sm ${alert ? "bg-red-50" : "bg-white"}`}>
-          <div className="flex items-center justify-between mb-3">
-            <p className="font-semibold text-gray-500 text-sm uppercase tracking-wide">Last {activityLabel(type)}</p>
-            {alert && (
-              <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">
-                {type === "feed" ? "Over 3 hours!" : "Over 12 hours!"}
-              </span>
-            )}
-          </div>
-          {last ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className={`text-2xl font-bold ${alert ? "text-red-600" : "text-gray-800"}`}>
-                  {type === "feed" ? preciseTimeAgo(last.logged_at) : timeAgo(last.logged_at)}
-                </p>
-                <p className="text-sm text-gray-600 mt-0.5">{summariseActivity(last)}</p>
-                {type === "feed" && det(last).amount_ml != null && (
-                  <p className={`text-sm font-semibold mt-0.5 ${accentText[type]}`}>{String(det(last).amount_ml)} ml</p>
-                )}
-                <p className="text-xs text-gray-400 mt-0.5">by {last.carer_name}</p>
+        {/* Sleep: special toggle UI */}
+        {type === "sleep" ? (() => {
+          const sleeping = isSleeping(last);
+          const d = last ? (last.details as unknown as Record<string, unknown>) : null;
+          const elapsed = sleeping && d ? differenceInMinutes(new Date(), new Date(d.start_time as string)) : null;
+          const todaySleepMins = todayActs.filter(a => (a.details as unknown as Record<string,unknown>).duration_min)
+            .reduce((s, a) => s + Number((a.details as unknown as Record<string,unknown>).duration_min), 0);
+          return (
+            <div className="space-y-3">
+              {/* State card */}
+              <div className={`rounded-2xl p-5 border-l-4 border-l-sleep shadow-sm ${sleeping ? "bg-sleep/5" : "bg-white"}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-3xl font-bold text-gray-800">{sleeping ? "😴 Sleeping" : "☀️ Awake"}</p>
+                    {sleeping && elapsed !== null && (
+                      <p className="text-xl text-sleep-dark font-semibold mt-1">
+                        {elapsed >= 60 ? `${Math.floor(elapsed / 60)}h ${elapsed % 60}m` : `${elapsed}m`} so far
+                      </p>
+                    )}
+                    {!sleeping && last && d?.duration_min != null && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        Last sleep: {(() => { const m = Number(d.duration_min); return m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`; })()} · {timeAgo(last.logged_at)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">Today</p>
+                    <p className="text-xl font-bold text-sleep-dark mt-1">
+                      {todaySleepMins >= 60 ? `${Math.floor(todaySleepMins/60)}h ${todaySleepMins%60}m` : todaySleepMins > 0 ? `${todaySleepMins}m` : "—"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={toggleSleep}
+                  disabled={sleepToggling}
+                  className={`w-full rounded-2xl py-4 text-lg font-semibold text-white active:opacity-80 disabled:opacity-50 transition-colors ${sleeping ? "bg-amber-400" : "bg-sleep"}`}
+                >
+                  {sleepToggling ? "Please wait..." : sleeping ? "☀️ Baby woke up — mark awake" : "😴 Baby fell asleep — mark asleep"}
+                </button>
               </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-400 uppercase tracking-wide">Today</p>
-                <p className={`text-2xl font-bold mt-1 ${accentText[type]}`}>{dailySummary()}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{todayActs.length} entr{todayActs.length !== 1 ? "ies" : "y"}</p>
-              </div>
+              {/* Manual log option */}
+              <button onClick={() => setShowLog(true)}
+                className="w-full bg-white border-2 border-dashed border-gray-200 rounded-2xl p-3 flex items-center justify-center gap-2 text-gray-400 hover:border-sleep hover:text-sleep active:bg-gray-50 transition-colors text-sm">
+                <Plus size={16} />
+                <span className="font-medium">Manually log a past sleep</span>
+              </button>
             </div>
-          ) : (
-            <p className="text-gray-400">No {activityLabel(type).toLowerCase()} logged yet</p>
-          )}
-        </div>
+          );
+        })() : (
+          <>
+            {/* Non-sleep summary card */}
+            <div className={`rounded-2xl p-4 border-l-4 ${borderColor[type]} shadow-sm ${alert ? "bg-red-50" : "bg-white"}`}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="font-semibold text-gray-500 text-sm uppercase tracking-wide">Last {activityLabel(type)}</p>
+                {alert && (
+                  <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">
+                    {type === "feed" ? "Over 3 hours!" : "Over 12 hours!"}
+                  </span>
+                )}
+              </div>
+              {last ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className={`text-2xl font-bold ${alert ? "text-red-600" : "text-gray-800"}`}>
+                      {type === "feed" ? preciseTimeAgo(last.logged_at) : timeAgo(last.logged_at)}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-0.5">{summariseActivity(last)}</p>
+                    {type === "feed" && det(last).amount_ml != null && (
+                      <p className={`text-sm font-semibold mt-0.5 ${accentText[type]}`}>{String(det(last).amount_ml)} ml</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-0.5">by {last.carer_name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">Today</p>
+                    <p className={`text-2xl font-bold mt-1 ${accentText[type]}`}>{dailySummary()}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{todayActs.length} entr{todayActs.length !== 1 ? "ies" : "y"}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-400">No {activityLabel(type).toLowerCase()} logged yet</p>
+              )}
+            </div>
+            {/* Add new log button */}
+            <button onClick={() => setShowLog(true)}
+              className="w-full bg-white border-2 border-dashed border-gray-200 rounded-2xl p-4 flex items-center justify-center gap-2 text-gray-400 hover:border-sleep hover:text-sleep active:bg-gray-50 transition-colors">
+              <Plus size={20} />
+              <span className="font-semibold">Log new {activityLabel(type).toLowerCase()}</span>
+            </button>
+          </>
+        )}
 
         {/* 7-day bar chart */}
         <BarChart activities={activities} type={type} />
-
-        {/* Add new log button */}
-        <button onClick={() => setShowLog(true)}
-          className="w-full bg-white border-2 border-dashed border-gray-200 rounded-2xl p-4 flex items-center justify-center gap-2 text-gray-400 hover:border-sleep hover:text-sleep active:bg-gray-50 transition-colors">
-          <Plus size={20} />
-          <span className="font-semibold">Log new {activityLabel(type).toLowerCase()}</span>
-        </button>
 
         {/* Logs grouped by date */}
         {grouped.length === 0 ? (
