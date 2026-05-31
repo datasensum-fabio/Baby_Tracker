@@ -247,7 +247,7 @@ export default function Dashboard({ babyId, carerId }: Props) {
           onSaved={() => { setEditActivity(null); fetchData(); }}
         />
       )}
-      {showShare && baby && <ShareModal code={baby.code} onClose={() => setShowShare(false)} />}
+      {showShare && baby && <ShareModal code={baby.code} babyName={baby.name} onClose={() => setShowShare(false)} />}
       <InstallBanner />
     </div>
   );
