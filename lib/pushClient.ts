@@ -67,8 +67,12 @@ export async function subscribeToPush(carerId: string, babyId: string): Promise<
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      return { ok: false, reason: `Server error saving subscription: ${err}` };
+      let detail = "";
+      try { detail = (await res.json()).error ?? await res.text(); } catch { detail = `HTTP ${res.status}`; }
+      if (detail.includes("push_subscriptions") || detail.includes("does not exist")) {
+        return { ok: false, reason: "Database table missing.\n\nPlease run the file supabase/schema_push_subscriptions.sql in the Supabase SQL Editor, then try again." };
+      }
+      return { ok: false, reason: `Server error: ${detail}` };
     }
 
     return { ok: true };
