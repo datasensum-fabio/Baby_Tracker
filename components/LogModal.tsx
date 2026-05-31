@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { Activity, ActivityType } from "@/lib/types";
+import { Activity, ActivityType, Drug } from "@/lib/types";
 import { activityEmoji, activityLabel } from "@/lib/helpers";
 import { X, Trash2 } from "lucide-react";
-import { format, subMinutes, subHours } from "date-fns";
+import { format, subMinutes } from "date-fns";
 
 interface Props {
   type: ActivityType;
@@ -79,10 +79,41 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
   // Sleep
   const [sleepDuration, setSleepDuration] = useState<string>(String(initField(existing, "duration_min", "") ?? ""));
 
-  // Medication — default to Propranolol 0.6ml
-  const [medName, setMedName] = useState<string>(initField(existing, "name", "Propranolol"));
-  const [medDose, setMedDose] = useState<string>(String(initField(existing, "dose", "0.6") ?? "0.6"));
+  // Medication
+  const [drugs, setDrugs] = useState<Drug[]>([]);
+  const [selectedDrugId, setSelectedDrugId] = useState<string | "manual" | null>(null);
+  const [medName, setMedName] = useState<string>(initField(existing, "name", ""));
+  const [medDose, setMedDose] = useState<string>(String(initField(existing, "dose", "") ?? ""));
   const [medUnit, setMedUnit] = useState<string>(initField(existing, "unit", "ml"));
+
+  // Load drugs when opening medication modal
+  useEffect(() => {
+    if (type !== "medication") return;
+    supabase.from("baby_drugs").select("*").eq("baby_id", babyId).order("sort_order")
+      .then(({ data }) => {
+        if (data) {
+          setDrugs(data);
+          if (!existing) {
+            // Pre-select default drug
+            const def = data.find((d: Drug) => d.is_default) ?? data[0];
+            if (def) {
+              setSelectedDrugId(def.id);
+              setMedName(def.name);
+              setMedDose(def.default_dose ? String(def.default_dose) : "");
+              setMedUnit(def.default_unit);
+            } else {
+              setSelectedDrugId("manual");
+            }
+          } else {
+            // Editing: match existing drug by name or set manual
+            const match = data.find((d: Drug) => d.name === initField(existing, "name", ""));
+            setSelectedDrugId(match ? match.id : "manual");
+          }
+        } else {
+          setSelectedDrugId("manual");
+        }
+      });
+  }, [type, babyId, existing]);
 
   // Nappy
   const [nappyType, setNappyType] = useState<string>(initField(existing, "nappy_type", "wet"));
@@ -270,11 +301,44 @@ export default function LogModal({ type, babyId, carerId, existing, onClose, onS
         {/* ── MEDICATION ── */}
         {type === "medication" && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Medication name *</label>
-              <input type="text" value={medName} onChange={(e) => setMedName(e.target.value)} placeholder="e.g. Propranolol"
-                className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
-            </div>
+            {/* Drug picker */}
+            {drugs.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2">Select drug</label>
+                <div className="flex flex-wrap gap-2">
+                  {drugs.map((d) => (
+                    <button key={d.id}
+                      onClick={() => {
+                        setSelectedDrugId(d.id);
+                        setMedName(d.name);
+                        setMedDose(d.default_dose ? String(d.default_dose) : "");
+                        setMedUnit(d.default_unit);
+                      }}
+                      className={`rounded-xl px-3 py-2 text-sm font-medium border-2 transition-colors ${
+                        selectedDrugId === d.id ? "bg-medication text-white border-medication" : "bg-white text-gray-700 border-gray-200"
+                      }`}>
+                      {d.name}{d.default_dose ? ` ${d.default_dose}${d.default_unit}` : ""}
+                      {d.is_default && <span className="ml-1 text-[10px] opacity-70">★</span>}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => { setSelectedDrugId("manual"); setMedName(""); setMedDose(""); }}
+                    className={`rounded-xl px-3 py-2 text-sm font-medium border-2 transition-colors ${
+                      selectedDrugId === "manual" ? "bg-medication text-white border-medication" : "bg-white text-gray-700 border-gray-200"
+                    }`}>
+                    Other…
+                  </button>
+                </div>
+              </div>
+            )}
+            {/* Manual name entry — shown when no drugs or "Other" selected */}
+            {(drugs.length === 0 || selectedDrugId === "manual") && (
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-1">Medication name *</label>
+                <input type="text" value={medName} onChange={(e) => setMedName(e.target.value)} placeholder="e.g. Propranolol"
+                  className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 ${ring}`} />
+              </div>
+            )}
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-600 mb-1">Dose *</label>

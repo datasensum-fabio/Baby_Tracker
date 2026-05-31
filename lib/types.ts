@@ -50,3 +50,14 @@ export interface NappyDetails {
   nappy_type: "wet" | "dirty" | "both" | "dry";
   color?: string;
 }
+
+export interface Drug {
+  id: string;
+  baby_id: string;
+  name: string;
+  default_dose: number | null;
+  default_unit: string;
+  alert_min: number | null;
+  is_default: boolean;
+  sort_order: number;
+}

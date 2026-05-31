@@ -10,6 +10,7 @@ import ShareModal from "./ShareModal";
 import InstallBanner from "./InstallBanner";
 import { Share2, RefreshCw, Pencil, ArrowLeft, Settings } from "lucide-react";
 import { loadSettings, BabySettings, DEFAULT_SETTINGS } from "@/lib/settings";
+import { Drug } from "@/lib/types";
 import {
   differenceInMinutes, differenceInDays, differenceInWeeks, differenceInMonths,
   format, isToday, isYesterday,
@@ -88,18 +89,21 @@ export default function Dashboard({ babyId, carerId }: Props) {
   const [loading, setLoading] = useState(true);
   const [sleepToggling, setSleepToggling] = useState(false);
   const [settings, setSettings] = useState<BabySettings>(DEFAULT_SETTINGS);
+  const [drugs, setDrugs] = useState<Drug[]>([]);
 
   const fetchData = useCallback(async () => {
-    const [{ data: babyData }, { data: carerData }, { data: actData }, s] = await Promise.all([
+    const [{ data: babyData }, { data: carerData }, { data: actData }, s, { data: drugsData }] = await Promise.all([
       supabase.from("babies").select().eq("id", babyId).single(),
       supabase.from("carers").select().eq("id", carerId).single(),
       supabase.from("activities").select("*, carers(name)")
         .eq("baby_id", babyId).is("deleted_at", null).order("logged_at", { ascending: false }).limit(200),
       loadSettings(babyId),
+      supabase.from("baby_drugs").select("*").eq("baby_id", babyId).order("sort_order"),
     ]);
     if (babyData) setBaby(babyData);
     if (carerData) setCarer(carerData);
     setSettings(s);
+    if (drugsData) setDrugs(drugsData);
     if (actData) {
       setActivities(actData.map((a: Activity & { carers?: { name: string } }) => ({
         ...a, carer_name: a.carers?.name ?? "Unknown",
@@ -295,37 +299,70 @@ export default function Dashboard({ babyId, carerId }: Props) {
             </button>
           </div>
 
-          {/* MEDICATION — full width, clickable */}
-          <button
-            onClick={() => router.push(`/baby/${babyId}/medication`)}
-            className={`w-full text-left rounded-2xl p-4 border-l-4 border-l-medication shadow-sm transition-colors active:scale-[0.99] ${medAlert ? "bg-red-50" : "bg-white"}`}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-xl font-bold">💊 Medication</p>
-              {medAlert && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over {minsToLabel(settings.medication_alert_min!)}!</span>}
-            </div>
-            {lastMed ? (
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Last dose</p>
-                  <p className={`text-2xl font-bold mt-0.5 ${medAlert ? "text-red-600" : "text-gray-800"}`}>
-                    {timeAgo(lastMed.logged_at)}
-                  </p>
-                  <p className="text-sm text-gray-500">{summariseActivity(lastMed)}</p>
-                  <p className="text-xs text-gray-400">by {lastMed.carer_name}</p>
+          {/* MEDICATION — full width, per-drug status */}
+          {(() => {
+            // Per-drug alert logic
+            const drugRows = drugs.map((drug) => {
+              const lastForDrug = activities.find(
+                (a) => a.type === "medication" &&
+                  (a.details as unknown as Record<string, unknown>).name === drug.name
+              );
+              const overdue = drug.alert_min != null && lastForDrug
+                ? differenceInMinutes(new Date(), new Date(lastForDrug.logged_at)) > drug.alert_min
+                : drug.alert_min != null && !lastForDrug; // never given → overdue if alert set
+              return { drug, lastForDrug, overdue };
+            });
+            const anyOverdue = drugRows.some((r) => r.overdue) || (drugs.length === 0 && medAlert);
+            const todayMedCount = activities.filter(a => a.type === "medication" && isToday(new Date(a.logged_at))).length;
+
+            return (
+              <button onClick={() => router.push(`/baby/${babyId}/medication`)}
+                className={`w-full text-left rounded-2xl p-4 border-l-4 border-l-medication shadow-sm transition-colors active:scale-[0.99] ${anyOverdue ? "bg-red-50" : "bg-white"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xl font-bold">💊 Medication</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{todayMedCount} dose{todayMedCount !== 1 ? "s" : ""} today</span>
+                    {anyOverdue && drugs.length === 0 && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-full">Over {minsToLabel(settings.medication_alert_min!)}!</span>}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-400 uppercase tracking-wide">Today</p>
-                  <p className="text-2xl font-bold text-gray-700 mt-0.5">
-                    {activities.filter(a => a.type === "medication" && isToday(new Date(a.logged_at))).length}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">doses</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400 mt-1">No medication logged yet</p>
-            )}
-          </button>
+
+                {drugs.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {drugRows.map(({ drug, lastForDrug, overdue }) => (
+                      <div key={drug.id} className={`flex items-center justify-between rounded-xl px-3 py-2 ${overdue ? "bg-red-100" : "bg-gray-50"}`}>
+                        <div>
+                          <span className="text-sm font-semibold text-gray-700">{drug.name}</span>
+                          {drug.default_dose && <span className="text-xs text-gray-400 ml-1">{drug.default_dose}{drug.default_unit}</span>}
+                        </div>
+                        <div className="text-right">
+                          {lastForDrug ? (
+                            <p className={`text-sm font-semibold ${overdue ? "text-red-600" : "text-gray-600"}`}>
+                              {preciseTimeAgo(lastForDrug.logged_at)}
+                            </p>
+                          ) : (
+                            <p className={`text-xs ${overdue ? "text-red-500 font-semibold" : "text-gray-400"}`}>Never</p>
+                          )}
+                          {overdue && drug.alert_min && (
+                            <p className="text-[10px] text-red-500">Over {minsToLabel(drug.alert_min)}!</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : lastMed ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Last dose</p>
+                      <p className={`text-2xl font-bold mt-0.5 ${medAlert ? "text-red-600" : "text-gray-800"}`}>{timeAgo(lastMed.logged_at)}</p>
+                      <p className="text-sm text-gray-500">{summariseActivity(lastMed)}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">No medication logged yet</p>
+                )}
+              </button>
+            );
+          })()}
         </div>
 
         {/* Log an activity */}
