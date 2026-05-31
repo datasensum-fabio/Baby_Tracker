@@ -111,6 +111,15 @@ export default function JoinPage() {
         const { data, error: signupErr } = await supabase.auth.signUp({ email: email.trim(), password });
         if (signupErr) throw signupErr;
         if (!data.user) throw new Error("Signup failed — please try again.");
+        // If email confirmation is required, session will be null
+        if (!data.session) {
+          setError(
+            "Almost there! Check your email and click the confirmation link, then come back here and use 'I have an account' to sign in."
+          );
+          setAuthMode("login");
+          setLoading(false);
+          return;
+        }
         userId = data.user.id;
       } else {
         const { data, error: loginErr } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
