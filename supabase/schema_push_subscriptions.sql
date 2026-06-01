@@ -15,6 +15,8 @@ create index if not exists idx_push_subs_carer_id on public.push_subscriptions(c
 
 alter table public.push_subscriptions enable row level security;
 
+drop policy if exists "Carers can manage own subscriptions" on public.push_subscriptions;
+
 create policy "Carers can manage own subscriptions"
   on public.push_subscriptions for all
   using (carer_id in (select id from public.carers where user_id = auth.uid()))
